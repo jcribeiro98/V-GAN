@@ -1,6 +1,6 @@
 import torch
 from collections import defaultdict
-from models.Generator import Generator
+from models.Generator import Generator, Generator_big
 import torch_two_sample  as tts
 from models.Mmd_loss import MMDLoss
 from models.Mmd_loss_constrained import MMDLossConstrained
@@ -15,6 +15,12 @@ import operator
 import datetime
 
 class VMMD:
+    '''
+    V-MMD, a Subspace-Generative Moment Matching Network.
+
+    Class for the method VMMD, the application of a GMMN to the problem of Subspace Generation. As a GMMN, no
+    kernel learning is performed. The default values for the kernel are 
+    '''
     def __init__(self, batch_size = 500, epochs = 30, lr = 0.007, momentum = 0.99, seed = 777, weight_decay = 0.04, path_to_directory = None):
         self.storage = locals()
         self.train_history = defaultdict(list)
@@ -83,7 +89,7 @@ class VMMD:
             - path_to_generator: Path to the generator (has to be stored as a .keras model)
             - path_to_discriminator: Path to the discriminator (has to be stored as a .keras model) (Optional)
         '''
-        self.generator = Generator(ndims)
+        self.generator = Generator_big(ndims)
         self.generator.load_state_dict(torch.load(path_to_generator))
         self.generator.eval() #This only works for dropout layers
         self.generator_optimizer = f'Loaded Model from {path_to_generator} with {ndims} dimensions in the latent space'
@@ -102,18 +108,19 @@ class VMMD:
 
         #MODEL INTIALIZATION#
         epochs = self.epochs
-        self.__latent_size = latent_size = X.shape[1]
+        self.__latent_size = latent_size = max(int(X.shape[1]/16), 1)
+        ndims = X.shape[1]
         train_size = X.shape[0]
         self.batch_size = min(self.batch_size, train_size)
 
         device = self.device
-        generator = Generator(latent_size).to(device)
+        generator = Generator_big(latent_size,ndims).to(device)
 
         
         optimizer = torch.optim.Adadelta(generator.parameters(), lr = self.lr,weight_decay=self.weight_decay)
         self.generator_optimizer = optimizer.__class__.__name__
         #loss_function =  tts.MMDStatistic(self.batch_size, self.batch_size) 
-        loss_function = MMDLossConstrained(weight= 1)
+        loss_function = MMDLossConstrained(weight= 10)
 
         for epoch in range(epochs):
             print(f'\rEpoch {epoch} of {epochs}')
@@ -188,7 +195,7 @@ if __name__ == "__main__":
                [0,0,0,0,0,0,0,1,0,0],[500,0,0,0,0,0,0,0,1,500],[500,0,0,0,0,0,0,0,500,1]]
         X_data = np.random.multivariate_normal(mean,cov,2000)
         
-        model = VMMD(epochs = 1500, path_to_directory=Path()/ "experiments" / f"Example_normal_{datetime.datetime.now()}", lr = 0.01)
+        model = VMMD(epochs = 1500, path_to_directory=Path()/ "experiments" / f"Example_normal_{datetime.datetime.now()}_vmmd", lr = 0.01)
         model.fit(X_data)
 
 
