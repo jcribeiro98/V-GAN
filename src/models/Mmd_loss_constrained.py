@@ -23,7 +23,9 @@ class RBF(nn.Module):
 
 
 class MMDLossConstrained(nn.Module):
-
+    '''
+    Constrained loss by the number of features selected
+    '''
     def __init__(self, weight, kernel=RBF()):
         super().__init__()
         self.kernel = kernel
