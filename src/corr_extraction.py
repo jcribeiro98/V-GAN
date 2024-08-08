@@ -1,4 +1,4 @@
-from subsel import VMMD
+from vmmd import VMMD
 import torch  
 import numpy as np 
 from pathlib import Path
@@ -25,7 +25,7 @@ def covariance_matrix_generator(dim_subspace, sigma, dim_space = 10, return_subs
             for j in range(cov_vector.size - 1 - i):    
                 x_matrix[feature, cov_vector[i+j+1]] = sigma
     x_matrix = x_matrix + np.transpose(x_matrix) - np.diag((np.ones(dim_space))) #Simetric
-    x_matrix = np.matmul(x_matrix, np.transpose(x_matrix)) #Semi-positivelly defined
+    #x_matrix = np.matmul(x_matrix, np.transpose(x_matrix)) #Semi-positivelly defined
     if return_subspace == True:
         cov_subspace = np.zeros(dim_space)
         for element in cov_vector:
@@ -63,7 +63,7 @@ def launch_corr_experiments(dim_subspace_vector, sigma_vector, dim_space = 10, r
                 if operator.not_(path_for_exiperiments.exists()):
                     os.mkdir(path_for_exiperiments)
                 
-                model = VMMD(epochs = 2, path_to_directory= path_for_exiperiments/f"run{i}_with_sigma{sigma}_dimsubspace{dim_subspace}", lr = 0.01)
+                model = VMMD(epochs = 1500, path_to_directory= path_for_exiperiments/f"run{i}_with_sigma{sigma}_dimsubspace{dim_subspace}", lr = 0.01)
                 model.fit(X_data)
                 u = model.generate_subspaces(500)
                 unique_subspaces, proba= np.unique(np.array(u.to('cpu')), axis=0, return_counts=True)
@@ -83,16 +83,16 @@ def launch_corr_experiments(dim_subspace_vector, sigma_vector, dim_space = 10, r
                 X_sample = torch.mps.Tensor(pd.DataFrame(X_data).sample(500).to_numpy()).to('mps:0')
                 uX_data = u *torch.mps.Tensor(X_sample).to(model.device) + torch.mean(X_sample,dim=0)*(~u)
                 mmd = tts.MMDStatistic(500, 500)
-                mmd_val, distances = mmd(X_sample,uX_data,alphas=[0.01], ret_matrix=True)
+                mmd_val, distances = mmd(X_sample,uX_data,alphas=[1/model.bandwidth], ret_matrix=True)
                 p_value = mmd.pval(distances)
-                if p_value <= 0.10:
+                if p_value <= 0.05:
                     mmd_test_counter += 1/repetitions
 
                 p_value_counter += p_value/repetitions
 
                 selected_subsp_dim_counter += np.sum(np.array(unique_subspaces)[index_of_max_subspace, :])/repetitions
 
-                proba_counter = proba[index_of_max_subspace]/repetitions
+                proba_counter += proba[index_of_max_subspace]/repetitions
             
             contain_vector_on_d[index_on_d] = contain_counter
             mmd_test_vector_on_d[index_on_d] = mmd_test_counter
@@ -123,7 +123,7 @@ def launch_corr_experiments(dim_subspace_vector, sigma_vector, dim_space = 10, r
 def parse_arguments(): 
    parser = argparse.ArgumentParser(description="Covariance extraction experiments for V-GAN") 
    parser.add_argument("--dim_subspace_vector", nargs='+', type=int, default=[5], help='Array of multiple dimensions for the subspaces')
-   parser.add_argument("--sigma_vector", nargs='+', type=int, default=[20,50], help='Array of multiple covariance values for the subspaces')
+   parser.add_argument("--sigma_vector", nargs='+', type=float, default=[20,50], help='Array of multiple covariance values for the subspaces')
    parser.add_argument("--repetitions", type=int, default=10, help='Number of repetitions taken place for each dimensionality and covariance value')
    parser.add_argument("--dim_space", type=int, default= 10, help="Dimensionality of the full-space where the experiment is taken place")
 
