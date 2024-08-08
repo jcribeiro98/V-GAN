@@ -165,3 +165,5 @@ experiments/
 
 # Test notebook for mps/cuda compatibility
 src/test.ipynb
+
+data/
