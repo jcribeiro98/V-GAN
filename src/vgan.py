@@ -101,7 +101,7 @@ class VGAN:
                 'batch_size': self.batch_size, 'seed': self.seed,
                 'generator optimizer': self.generator_optimizer}
 
-    def model_snapshot(self, path_to_directory=None, show=False):
+    def model_snapshot(self, path_to_directory=None, run_number=0, show=False):
         ''' Creates an snapshot of the model 
 
         Saves important information regarding the training of the model
@@ -119,12 +119,20 @@ class VGAN:
             os.mkdir(path_to_directory / "train_history")
 
         pd.DataFrame(self.train_history["generator_loss"]).to_csv(
-            path_to_directory/'train_history'/'generator_loss.csv', header=False, index=False)
-        pd.DataFrame(self.get_params(), [0]).to_csv(
-            path_to_directory / 'params.csv')
-        self.__plot_loss(path_to_directory, show)
+            path_to_directory/'train_history'/f'generator_loss_{run_number}.csv', header=False, index=False)
+        if os.path.isfile(path_to_directory/'params.csv') != True:
+            pd.DataFrame(self.get_params(), [0]).to_csv(
+                path_to_directory / 'params.csv')
+        else:
+            params = pd.read_csv(path_to_directory / 'params.csv', index_col=0)
+            params_new = pd.DataFrame(self.get_params(), [run_number])
+            params = params.reindex(params.index.union(params_new.index))
+            params.update(params_new)
+            params.to_csv(
+                path_to_directory / 'params.csv')
+        self.__plot_loss(path_to_directory, show=False)
 
-    def load_models(self, path_to_generator, ndims):
+    def load_models(self, path_to_generator, ndims, device='mps'):
         '''Loads models for prediction
 
         In case that the generator has already been trained, this method allows to load it (and optionally the discriminator) for generating subspaces
@@ -133,10 +141,11 @@ class VGAN:
             - path_to_discriminator: Path to the discriminator (has to be stored as a .keras model) (Optional)
         '''
         self.generator = Generator_big(
-            img_size=ndims, latent_size=int(ndims/16))
+            img_size=ndims, latent_size=max(int(ndims/16), 1)).to(device)
         self.generator.load_state_dict(torch.load(path_to_generator))
         self.generator.eval()  # This only works for dropout layers
         self.generator_optimizer = f'Loaded Model from {path_to_generator} with {ndims} dimensions in the latent space'
+        self.__latent_size = max(int(ndims/16), 1)
 
     def fit(self, X):
 
@@ -294,11 +303,12 @@ class VGAN:
                 os.mkdir(path_to_directory)
                 if operator.not_(Path(path_to_directory/'models').exists()):
                     os.mkdir(path_to_directory / 'models')
+            run_number = int(len(os.listdir(path_to_directory/'models'))/2)
             torch.save(generator.state_dict(),
-                       path_to_directory/'models'/'generator.pt')
+                       path_to_directory/'models'/f'generator_{run_number}.pt')
             torch.save(generator.state_dict(),
-                       path_to_directory/'models'/'detector.pt')
-            self.model_snapshot(path_to_directory, show=True)
+                       path_to_directory/'models'/f'detector_{run_number}.pt')
+            self.model_snapshot(path_to_directory, run_number, show=True)
 
         self.generator = generator
         self.detector = detector
