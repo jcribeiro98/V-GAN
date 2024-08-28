@@ -1,0 +1,108 @@
+from src.modules.od_module import VGAN
+import numpy as np
+from pyod.models.ocsvm import OCSVM
+from pyod.models.ecod import ECOD
+from pyod.models.lof import LOF
+from pyod.models.feature_bagging import FeatureBagging
+from pathlib import Path
+import datetime
+from sklearn.preprocessing import normalize
+import pandas as pd
+from sklearn.metrics import roc_auc_score as auc
+from sel_suod.models.base import sel_SUOD
+import itertools
+from sklearn.preprocessing import label_binarize
+from joblib.externals.loky import get_reusable_executor
+from data.get_datasets import load_data
+import json
+import os
+from outlier_detection import launch_outlier_detection_experiments, pretrained_launch_outlier_detection_experiments
+import logging
+logger = logging.getLogger(__name__)
+
+
+def pipeline_outlier_detection_vgan(datasets: list, outlier_detection_models: list = None, experimental_settings: np.array = None, base_methods: list = []) -> np.array:
+    """Pipeline for the outlier detection experiments
+
+    This function will run the outlier detection experiments in a collection of datasets and for a group of outlier detection models.
+    Additionally, the funcition is capable of, given the existence of a version of VGAN/VMMD, load it and use it for its own porpuse
+
+    Args:
+        datasets (list): list of datasets to run the experiments in
+        outlier_detection_models (list): list of outlier detection models to run the experiments withs (besides vgan ensemble)
+        base_methods (list): List of base_estimators to employ as the basis of the ensemble used in VGAN. It does NOT function as in SUOD and sel_SUOD,
+        but rather as FeatureBagging, where every model introduced here will be used in SEPARATE homogeneous ensembles.
+    """
+    logging.basicConfig(level=logging.INFO)
+    results_df = pd.DataFrame(
+        {"Dataset": [], "Method": [], "AUC": [], "PRAUC": [], "F1": []})
+    for i, dataset in enumerate(datasets):
+        for j, base_method in enumerate(base_methods):
+            try:
+                logger.info(
+                    f"Running dataset {dataset}, number {i} out of {datasets.__len__()} using method: {base_method.__class__.__name__}, number {j} out of {len(base_methods)}")
+
+                if os.path.isdir(Path() / "experiments" / f"VGAN_{dataset}"):
+                    results_dict = pretrained_launch_outlier_detection_experiments(
+                        dataset_name=dataset, base_estimators=[base_method])
+                else:
+                    results_dict = launch_outlier_detection_experiments(
+                        dataset_name=dataset, base_estimators=[base_method],
+                        epochs=2000, temperature=10)
+            except:
+                logger.warning(
+                    f"Error found during exection in dataset: {dataset}")
+                pass
+            results_dict["Method"] = base_method.__class__.__name__
+            results_df = results_df._append(results_dict, ignore_index=True)
+
+    results_df.to_csv(Path() / "experiments" /
+                      "Outlier_Detection" / f"Results_{[method.__class__.__name__ for method in base_methods].__repr__()}_{datasets.__repr__()}.csv")
+
+
+if __name__ == "__main__":
+
+    datasets = ["20news_0",
+                "MVTec-AD_bottle"
+                "InternetAds",
+                "Agnews",
+                "Amazon",
+                "Imdb",
+                "Yelp",
+                "MNIST-C_brightness",
+                "CIFAR10_0",
+                "FashionMNIST_0",
+                "SVHN_0",
+                "speech",
+                "musk",
+                "mnist",
+                "optdigits",
+                "SpamBase",
+                "landsat",
+                "satellite",
+                "satimage-2",
+                "Ionosphere",
+                "WPBC",
+                "letter",
+                "WDBC",
+                "fault",
+                "annthyroid",
+                "cardio",
+                "Cardiotocography",
+                "Waveform",
+                "Hepatitis",
+                "Lymphography",
+                "pendigits",
+                "wine",
+                "vowels",
+                "PageBlocks",
+                "breastw",
+                "Stamps",
+                "WBC",
+                "Pima",
+                "yeast",
+                "glass",
+                "thyroid",
+                "vertebral",
+                "Wilt"]
+    pipeline_outlier_detection_vgan(datasets, base_methods=[LOF()])
