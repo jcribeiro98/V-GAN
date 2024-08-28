@@ -1,2 +1,0 @@
-,batch size,epochs,lr_g,momentum,weight decay,batch_size,seed,generator optimizer
-0,500,2,0.01,0.99,0.04,500,777,Adadelta

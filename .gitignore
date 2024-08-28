@@ -166,4 +166,7 @@ experiments/
 # Test notebook for mps/cuda compatibility
 src/test.ipynb
 
-data/
+data/datasets
+data/elki
+.DS_Store
+.vscode/
