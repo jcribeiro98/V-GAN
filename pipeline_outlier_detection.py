@@ -55,9 +55,8 @@ def pipeline_outlier_detection_vgan(datasets: list, outlier_detection_models: li
                 pass
             results_dict["Method"] = base_method.__class__.__name__
             results_df = results_df._append(results_dict, ignore_index=True)
-
-    results_df.to_csv(Path() / "experiments" /
-                      "Outlier_Detection" / f"Results_{[method.__class__.__name__ for method in base_methods].__repr__()}_{datasets.__repr__()}.csv")
+            results_df.to_csv(Path() / "experiments" /
+                              "Outlier_Detection" / f"Results_{[method.__class__.__name__ for method in base_methods].__repr__()}_{datasets.__repr__()}.csv")
 
 
 if __name__ == "__main__":
