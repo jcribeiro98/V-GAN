@@ -92,7 +92,7 @@ def pretrained_launch_outlier_detection_experiments(dataset_name: str, base_esti
 
 
 if __name__ == "__main__":
-    dataset_name = "speech"
+    dataset_name = "MVTec-AD_bottle"
 
     auc_vgan_ens = launch_outlier_detection_experiments(dataset_name, [
         LOF()])
