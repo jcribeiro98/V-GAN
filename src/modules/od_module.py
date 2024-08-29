@@ -7,6 +7,7 @@ from src.vmmd import VMMD
 class VGAN(VGAN):
 
     def approx_subspace_dist(self, subspace_count=500):
+        self.__seed = 777
         u = self.generate_subspaces(subspace_count)
         unique_subspaces, proba = np.unique(
             np.array(u.to('cpu')), axis=0, return_counts=True)

@@ -43,6 +43,7 @@ class VGAN:
         self.__elm = False
         self.device = torch.device('cuda:0' if torch.cuda.is_available(
         ) else 'mps:0' if torch.backends.mps.is_available() else 'cpu')
+        self.__seed = None
 
     def __normalize(x, dim=1):
         return x.div(x.norm(2, dim=dim).expand_as(x))
@@ -314,6 +315,8 @@ class VGAN:
         self.detector = detector
 
     def generate_subspaces(self, nsubs):
+        if not self.__seed == None:
+            torch.manual_seed(self.__seed)
         noise_tensor = torch.Tensor(nsubs, self.__latent_size).to(self.device)
         noise_tensor.normal_()
         u = self.generator(noise_tensor)
