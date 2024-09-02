@@ -92,7 +92,7 @@ class VMMD:
                 path_to_directory / 'params.csv')
         self.__plot_loss(path_to_directory, show)
 
-    def load_models(self, path_to_generator, ndims, device='mps'):
+    def load_models(self, path_to_generator, ndims, device: str = None):
         '''Loads models for prediction
 
         In case that the generator has already been trained, this method allows to load it (and optionally the discriminator) for generating subspaces
@@ -100,6 +100,8 @@ class VMMD:
             - path_to_generator: Path to the generator (has to be stored as a .keras model)
             - path_to_discriminator: Path to the discriminator (has to be stored as a .keras model) (Optional)
         '''
+        if device == None:
+            device = self.device
         self.generator = Generator_big(
             img_size=ndims, latent_size=max(int(ndims/16), 1)).to(device)
         self.generator.load_state_dict(torch.load(path_to_generator))
@@ -165,7 +167,7 @@ class VMMD:
             batch_number = data_loader.__len__()
 
             # GET NOISE TENSORS#
-            if cuda:
+            if cuda:  # Need to open this if statement as the Tensor function has to be called from diferent modules depending of the device
                 noise_tensor = torch.cuda.FloatTensor(
                     self.batch_size, latent_size).to(torch.device('cuda'))
             elif mps:
@@ -217,6 +219,7 @@ class VMMD:
         self.generator = generator
 
     def generate_subspaces(self, nsubs):
+        # Need to load in cpu as mps Tensor module doesn't properly fix the seed
         noise_tensor = torch.Tensor(nsubs, self.__latent_size).to('cpu')
         if not self.seed == None:
             torch.manual_seed(self.seed)

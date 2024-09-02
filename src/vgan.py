@@ -133,7 +133,7 @@ class VGAN:
                 path_to_directory / 'params.csv')
         self.__plot_loss(path_to_directory, show=False)
 
-    def load_models(self, path_to_generator, ndims, device='mps'):
+    def load_models(self, path_to_generator, ndims, device: str = None):
         '''Loads models for prediction
 
         In case that the generator has already been trained, this method allows to load it (and optionally the discriminator) for generating subspaces
@@ -141,6 +141,8 @@ class VGAN:
             - path_to_generator: Path to the generator (has to be stored as a .keras model)
             - path_to_discriminator: Path to the discriminator (has to be stored as a .keras model) (Optional)
         '''
+        if device == None:
+            device = self.device
         self.generator = Generator_big(
             img_size=ndims, latent_size=max(int(ndims/16), 1)).to(device)
         self.generator.load_state_dict(torch.load(path_to_generator))
