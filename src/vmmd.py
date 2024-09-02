@@ -20,7 +20,7 @@ class VMMD:
     V-MMD, a Subspace-Generative Moment Matching Network.
 
     Class for the method VMMD, the application of a GMMN to the problem of Subspace Generation. As a GMMN, no
-    kernel learning is performed. The default values for the kernel are 
+    kernel learning is performed. The default values for the kernel are
     '''
 
     def __init__(self, batch_size=500, epochs=30, lr=0.007, momentum=0.99, seed=777, weight_decay=0.04, path_to_directory=None):
@@ -61,8 +61,8 @@ class VMMD:
                 'batch_size': self.batch_size, 'seed': self.seed,
                 'generator optimizer': self.generator_optimizer}
 
-    def model_snapshot(self, path_to_directory=None, show=False):
-        ''' Creates an snapshot of the model 
+    def model_snapshot(self, path_to_directory=None, run_number=0, show=False):
+        ''' Creates an snapshot of the model
 
         Saves important information regarding the training of the model
         Args:
@@ -79,12 +79,20 @@ class VMMD:
             os.mkdir(path_to_directory / "train_history")
 
         pd.DataFrame(self.train_history["generator_loss"]).to_csv(
-            path_to_directory/'train_history'/'generator_loss.csv', header=False, index=False)
-        pd.DataFrame(self.get_params(), [0]).to_csv(
-            path_to_directory / 'params.csv')
+            path_to_directory/'train_history'/f'generator_loss_{run_number}.csv', header=False, index=False)
+        if os.path.isfile(path_to_directory/'params.csv') != True:
+            pd.DataFrame(self.get_params(), [0]).to_csv(
+                path_to_directory / 'params.csv')
+        else:
+            params = pd.read_csv(path_to_directory / 'params.csv', index_col=0)
+            params_new = pd.DataFrame(self.get_params(), [run_number])
+            params = params.reindex(params.index.union(params_new.index))
+            params.update(params_new)
+            params.to_csv(
+                path_to_directory / 'params.csv')
         self.__plot_loss(path_to_directory, show)
 
-    def load_models(self, path_to_generator, ndims):
+    def load_models(self, path_to_generator, ndims, device='mps'):
         '''Loads models for prediction
 
         In case that the generator has already been trained, this method allows to load it (and optionally the discriminator) for generating subspaces
@@ -92,10 +100,29 @@ class VMMD:
             - path_to_generator: Path to the generator (has to be stored as a .keras model)
             - path_to_discriminator: Path to the discriminator (has to be stored as a .keras model) (Optional)
         '''
-        self.generator = Generator_big(ndims)
+        self.generator = Generator_big(
+            img_size=ndims, latent_size=max(int(ndims/16), 1)).to(device)
         self.generator.load_state_dict(torch.load(path_to_generator))
         self.generator.eval()  # This only works for dropout layers
         self.generator_optimizer = f'Loaded Model from {path_to_generator} with {ndims} dimensions in the latent space'
+        self.__latent_size = max(int(ndims/16), 1)
+
+    def get_the_networks(self, ndims: int, latent_size: int, device: str = None) -> Generator_big:
+        """Object function to obtain the networks' architecture
+
+        Args:
+            ndims (int): Number of dimensions of the full space
+            latent_size (int): Number of dimensions of the latent space
+            device (str, optional): CUDA device to mount the networks to. Defaults to None.
+
+        Returns:
+            generator: A generator model (child class from torch.nn.Module)
+        """
+        if device == None:
+            device = self.device
+        generator = Generator_big(
+            img_size=ndims, latent_size=latent_size).to(device)
+        return generator
 
     def fit(self, X):
 
@@ -116,8 +143,8 @@ class VMMD:
         self.batch_size = min(self.batch_size, train_size)
 
         device = self.device
-        generator = Generator_big(latent_size, ndims).to(device)
-
+        generator = self.get_the_networks(
+            ndims, latent_size, device=device)
         optimizer = torch.optim.Adadelta(
             generator.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         self.generator_optimizer = optimizer.__class__.__name__
@@ -182,16 +209,19 @@ class VMMD:
                 os.mkdir(path_to_directory)
                 if operator.not_(Path(path_to_directory/'models').exists()):
                     os.mkdir(path_to_directory / 'models')
+            run_number = int(len(os.listdir(path_to_directory/'models')))
             torch.save(generator.state_dict(),
-                       path_to_directory/'models'/'generator.pt')
-            self.model_snapshot(path_to_directory, show=False)
+                       path_to_directory/'models'/f'generator_{run_number}.pt')
+            self.model_snapshot(path_to_directory, run_number, show=True)
 
         self.generator = generator
 
     def generate_subspaces(self, nsubs):
-        noise_tensor = torch.Tensor(nsubs, self.__latent_size).to(self.device)
+        noise_tensor = torch.Tensor(nsubs, self.__latent_size).to('cpu')
+        if not self.seed == None:
+            torch.manual_seed(self.seed)
         noise_tensor.normal_()
-        u = self.generator(noise_tensor)
+        u = self.generator(noise_tensor.to(self.device))
         u = torch.greater_equal(u, 1/u.shape[1])
         return u
 

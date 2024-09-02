@@ -43,7 +43,7 @@ class VGAN:
         self.__elm = False
         self.device = torch.device('cuda:0' if torch.cuda.is_available(
         ) else 'mps:0' if torch.backends.mps.is_available() else 'cpu')
-        self.__seed = None
+        self.seed = 777
 
     def __normalize(x, dim=1):
         return x.div(x.norm(2, dim=dim).expand_as(x))
@@ -148,6 +148,24 @@ class VGAN:
         self.generator_optimizer = f'Loaded Model from {path_to_generator} with {ndims} dimensions in the latent space'
         self.__latent_size = max(int(ndims/16), 1)
 
+    def get_the_networks(self, ndims: int, latent_size: int, device: str = None) -> tuple:
+        """Object function to obtain the networks' architecture
+
+        Args:
+            ndims (int): Number of dimensions of the full space
+            latent_size (int): Number of dimensions of the latent space
+            device (str, optional): CUDA device to mount the networks to. Defaults to None.
+
+        Returns:
+            tuple: A tuple containing the generator and the detector of the network (child classes from torch.nn.Module)
+        """
+        if device == None:
+            device = self.device
+        generator = Generator_big(
+            img_size=ndims, latent_size=latent_size).to(device)
+        detector = Detector(latent_size, ndims, Encoder, Decoder).to(device)
+        return generator, detector
+
     def fit(self, X):
 
         cuda = torch.cuda.is_available()
@@ -166,9 +184,8 @@ class VGAN:
         self.batch_size = min(self.batch_size, train_size)
 
         device = self.device
-        generator = Generator_big(
-            img_size=ndims, latent_size=latent_size).to(device)
-        detector = Detector(latent_size, ndims, Encoder, Decoder).to(device)
+        generator, detector = self.get_the_networks(
+            ndims, latent_size, device=device)
         generator.apply(self.__weights_init)
         detector.apply(self.__weights_init)
 
@@ -315,11 +332,11 @@ class VGAN:
         self.detector = detector
 
     def generate_subspaces(self, nsubs):
-        if not self.__seed == None:
-            torch.manual_seed(self.__seed)
-        noise_tensor = torch.Tensor(nsubs, self.__latent_size).to(self.device)
+        noise_tensor = torch.Tensor(nsubs, self.__latent_size).to('cpu')
+        if not self.seed == None:
+            torch.manual_seed(self.seed)
         noise_tensor.normal_()
-        u = self.generator(noise_tensor)
+        u = self.generator(noise_tensor.to(self.device))
         u = torch.greater_equal(u, 1/u.shape[1])
         return u
 
