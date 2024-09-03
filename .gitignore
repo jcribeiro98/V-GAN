@@ -167,3 +167,5 @@ experiments/
 src/test.ipynb
 
 data/
+.DS_Store
+.vscode/
