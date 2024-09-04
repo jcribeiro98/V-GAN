@@ -62,9 +62,9 @@ def pipeline_outlier_detection_vgan(datasets: list, outlier_detection_models: li
                     results_dict["Method"] = base_method.__class__.__name__
                     results_df = results_df._append(
                         results_dict, ignore_index=True)
+                
                 except:
-                    logger.warning(
-                        f"Error found during exection in dataset: {dataset}")
+                    logger.warning(f"Error found during exection in dataset: {dataset}")
                 pass
 
                 results_df.to_csv(Path() / "experiments" /
@@ -233,8 +233,7 @@ if __name__ == "__main__":
                 "vertebral",
                 "Wilt"]
 
-    pipeline_outlier_detection_vgan(
-        datasets, base_methods=[CBLOF()], gen_model_to_use="VGAN")
+    #pipeline_outlier_detection_vgan( datasets, base_methods=[CBLOF()], gen_model_to_use="VGAN")
     pipeline_outlier_detection_vgan(
         datasets, base_methods=[ECOD()], gen_model_to_use="VGAN")
     # pipeline_outlier_detection_vgan(datasets, base_methods=[KNN()], gen_model_to_use="VMMD")

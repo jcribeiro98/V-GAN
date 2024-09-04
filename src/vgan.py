@@ -145,7 +145,7 @@ class VGAN:
             device = self.device
         self.generator = Generator_big(
             img_size=ndims, latent_size=max(int(ndims/16), 1)).to(device)
-        self.generator.load_state_dict(torch.load(path_to_generator))
+        self.generator.load_state_dict(torch.load(path_to_generator, map_location=device))
         self.generator.eval()  # This only works for dropout layers
         self.generator_optimizer = f'Loaded Model from {path_to_generator} with {ndims} dimensions in the latent space'
         self.__latent_size = max(int(ndims/16), 1)
