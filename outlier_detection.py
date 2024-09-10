@@ -52,14 +52,14 @@ def launch_outlier_detection_experiments(dataset_name: str, base_estimators: lis
 
     vgan.fit(X_train)
     vgan.seed = seed
-    vgan.approx_subspace_dist(add_leftover_features=True)
+    vgan.approx_subspace_dist(add_leftover_features=False)
     ensemble_model = sel_SUOD(base_estimators=base_estimators, subspaces=vgan.subspaces,
                               n_jobs=-1, bps_flag=False, approx_flag_global=False)
     ensemble_model.fit(X_train)
     decision_function_scores_ens = ensemble_model.decision_function(
         X_test)
     decision_function_scores_ens = aggregator_funct(
-        decision_function_scores_ens, weights=vgan.proba, type="exact")
+        decision_function_scores_ens, weights=vgan.proba, type="avg")
     return {"Dataset": dataset_name,
             "AUC": auc(y_test, decision_function_scores_ens),
             "PRAUC": average_precision_score(y_test, decision_function_scores_ens),
@@ -92,7 +92,7 @@ def pretrained_launch_outlier_detection_experiments(dataset_name: str, base_esti
         vgan.load_models(Path() / "experiments" / "VMMD" /
                          f"VMMD_{dataset_name}" / "models" / "generator_0.pt", ndims=X_train.shape[1])
     vgan.seed = seed
-    vgan.approx_subspace_dist(add_leftover_features=True)
+    vgan.approx_subspace_dist(add_leftover_features=False)
     ensemble_model = sel_SUOD(base_estimators=base_estimators, subspaces=vgan.subspaces,
                               n_jobs=-1, bps_flag=False, approx_flag_global=False)
     ensemble_model.fit(X_train)
