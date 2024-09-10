@@ -11,6 +11,19 @@ def aggregator_funct(decision_function: np.array, type: str = "avg", weights: np
 
     if type == "exact":
         weights = weights/weights.sum()
-        aggregated_scores = [random.choices(scores, weights=weights)
-                             for scores in decision_function]
+        random_indexes = random.choices(
+            range(decision_function.shape[1]), k=decision_function.shape[0])
+        aggregated_scores = [weights[random_indexes[i]]
+                             * (decision_function[i])[random_indexes[i]] for i in range(decision_function.shape[0])]
         return aggregated_scores
+
+
+def numeric_to_boolean(num_array, n_features):
+    res = []
+    for array in num_array:
+        bool_array = [False for i in range(n_features)]
+        for entry in array:
+            bool_array[entry] = True
+        res.append(bool_array)
+
+    return res
