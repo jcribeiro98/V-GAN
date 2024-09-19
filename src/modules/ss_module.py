@@ -5,12 +5,23 @@ This base class has to store a:
      .metric: type list[int]. List of a metric/quality associated to each subspace. It will get inizialized by ones. If not used/needed, leave it like that
 """
 import random
-import src.modules.bin.main_hics as hics
+from src.modules.bin import main_hics as hics
 import numpy as np
 import pandas as pd
 import os
 from src.modules.tools import numeric_to_boolean
 from pathlib import Path
+from data.get_datasets import load_data
+from src.packages.Clique.Clique import get_dense_units_for_dim, get_one_dim_dense_units, get_clusters
+from src.modules.network_module import MLPnet
+import torch
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from pyod.models.base import BaseDetector
+from pyod.models.lof import LOF
+from sklearn import clone
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BaseSubspaceSelector:
@@ -77,4 +88,140 @@ class HiCS(BaseSubspaceSelector):
         self.trained = True
 
 
-# class CLIQUE(BaseSubspaceSelector):
+class CLIQUE(BaseSubspaceSelector):
+    """Class for the CLIQUE method
+    We select the subsapces where a cluster is fitted. 
+
+    Inherits:
+        BaseSubspaceSelector
+    """
+
+    def __init__(self, xsi: float = 3, tau: float = 0.1, max_dim: int = np.Inf):
+        super().__init__()
+        # We need to load the data directly in Nim for this to work, we can not pass it as a numpy array.
+        self.xsi = xsi
+        self.tau = tau
+        self.max_dim = max_dim
+
+    def fit(self, data):
+        self.subspaces = []
+        dense_units = get_one_dim_dense_units(data, self.tau, self.xsi)
+
+        # Getting 1 dimensional clusters
+        clusters = get_clusters(dense_units, data, self.xsi)
+
+        # Finding dense units and clusters for dimension > 2
+        current_dim = 2
+        number_of_features = np.shape(data)[1]
+        while (current_dim <= number_of_features) & (len(dense_units) > 0) & (current_dim <= self.max_dim):
+            print("\n", str(current_dim), " dimensional clusters:")
+            dense_units = get_dense_units_for_dim(
+                data, dense_units, current_dim, self.xsi, self.tau)
+            i = self.subspaces.__len__() - 1
+            for cluster in get_clusters(dense_units, data, self.xsi):
+                clusters.append(cluster)
+
+                if list(cluster.dimensions) in self.subspaces:
+                    pass
+                self.subspaces.append(list(cluster.dimensions))
+            current_dim += 1
+        self.subspaces = numeric_to_boolean(self.subspaces, number_of_features)
+        self.trained = True
+
+
+class ELM(BaseSubspaceSelector):
+
+    def __init__(self,
+                 batch_size=1000,
+                 representation_dim=20,
+                 hidden_neurons=None,
+                 hidden_activation='tanh',
+                 skip_connection=False,
+                 n_ensemble=50,
+                 max_samples=256,
+                 contamination=0.1,
+                 random_state=None,
+                 device=None):
+
+        super().__init__()
+        self.batch_size = batch_size
+        self.representation_dim = representation_dim
+        self.hidden_activation = hidden_activation
+        self.skip_connection = skip_connection
+        self.hidden_neurons = hidden_neurons
+        self.odm_trained = False
+
+        self.n_ensemble = n_ensemble
+        self.max_samples = max_samples
+
+        self.random_state = random_state
+        self.device = device
+
+        self.minmax_scaler = None
+
+        # create default calculation device (support GPU if available)
+        if self.device is None:
+            self.device = torch.device(
+                "cuda:0" if torch.cuda.is_available() else "cpu")
+
+        # set random seed
+        if self.random_state is not None:
+            torch.manual_seed(self.random_state)
+            torch.cuda.manual_seed(self.random_state)
+            torch.cuda.manual_seed_all(self.random_state)
+            np.random.seed(self.random_state)
+
+        # default values for the amount of hidden neurons
+        if self.hidden_neurons is None:
+            self.hidden_neurons = [500, 100]
+
+    def fit(self, X_train):
+        n_samples, n_features = X_train.shape[0], X_train.shape[1]
+
+        # conduct min-max normalization before feeding into neural networks
+        self.minmax_scaler = MinMaxScaler()
+        self.minmax_scaler.fit(X_train)
+        X_train = self.minmax_scaler.transform(X_train)
+
+        # prepare neural network parameters
+        network_params = {
+            'n_features': n_features,
+            'n_hidden': self.hidden_neurons,
+            'n_output': self.representation_dim,
+            'activation': self.hidden_activation,
+            'skip_connection': self.skip_connection
+        }
+
+        ensemble_seeds = np.random.randint(0, 100000, self.n_ensemble)
+        for i in range(self.n_ensemble):
+            # instantiate network class and seed random seed
+            net = MLPnet(**network_params).to(self.device)
+            torch.manual_seed(ensemble_seeds[i])
+            self.net_lst = []
+
+            # initialize network parameters
+            for name, param in net.named_parameters():
+                if name.endswith('weight'):
+                    torch.nn.init.normal_(param, mean=0., std=1.)
+
+            self.net_lst.append(net)
+
+    def fit_odm(self, X_train: np.ndarray, base_odm: BaseDetector = LOF()):
+        odm_list = []
+        for i, net in enumerate(self.net_lst):
+            logger.info(f"Training ELM {i+1} out of {self.net_lst.__len__()}")
+            x_reduced = self._deep_representation(net, X_train)
+
+            odm = clone(base_odm)
+            odm.fit(x_reduced)
+            odm_list.append(odm)
+        self.odm_trained = True
+
+    def decision_function_odm(self, X_test):
+        assert self.odm_trained, "No ODM has been trained"
+
+        decision_function = []
+        for odm in self.odm_list:
+            decision_function.append(odm.decision_function(X_test))
+
+        return decision_function
