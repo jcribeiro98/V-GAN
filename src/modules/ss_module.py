@@ -19,8 +19,9 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from pyod.models.base import BaseDetector
 from pyod.models.lof import LOF
 from sklearn import clone
+from concrete_autoencoder import ConcreteAutoencoderFeatureSelector
+from keras.layers import Dense, Dropout, LeakyReLU
 import logging
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +34,17 @@ class BaseSubspaceSelector:
 
     def fit(self, X_train):
         self.trained = True
+
+
+def decoder(x):
+    x = Dense(20)(x)
+    x = LeakyReLU(0.2)(x)
+    x = Dropout(0.1)(x)
+    x = Dense(320)(x)
+    x = LeakyReLU(0.2)(x)
+    x = Dropout(0.1)(x)
+    x = Dense(1555)(x)
+    return x
 
 
 class HiCS(BaseSubspaceSelector):
@@ -225,3 +237,29 @@ class ELM(BaseSubspaceSelector):
             decision_function.append(odm.decision_function(X_test))
 
         return decision_function
+
+
+class CAE(BaseSubspaceSelector):
+    def __init__(self, K: int = 20, output_function=decoder,
+                 num_epochs: int = 300, batch_size: int = None,
+                 learning_rate: float = .001, start_temp: float = 10.0,
+                 min_temp: float = .1, tryout_limit: int = 1) -> None:
+        super().__init__()
+        self.K = K
+        self.output_function = output_function
+        self.num_epochs = num_epochs
+        self.batch_size = batch_size
+        self.learning_rate = learning_rate
+        self.start_temp = start_temp
+        self.min_temp = min_temp
+        self.tryout_limit = tryout_limit
+
+    def fit(self, X_train):
+        selector = ConcreteAutoencoderFeatureSelector(self.K, self.output_function, self.num_epochs,
+                                                      self.batch_size, self.learning_rate,
+                                                      self.start_temp, self.min_temp, self.tryout_limit)
+        selector.fit(X_train, Y=None)
+        self.subspaces = [(selector.get_support(indices=False) > 0).tolist()]
+        self.weights = [selector.get_support(indices=False).tolist()]
+
+        self.trained = True
