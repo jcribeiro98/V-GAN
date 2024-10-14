@@ -27,103 +27,19 @@ from outlier_detection import launch_outlier_detection_experiments, pretrained_l
 import logging
 from colorama import Fore
 from sklearn.base import clone
+import src.modules.ss_module as ss
+import time
+import signal
+
 logger = logging.getLogger(__name__)
 
 
-def pipeline_outlier_detection_vgan(datasets: list, outlier_detection_models: list = None, experimental_settings: np.array = None,
-                                    base_methods: list = [], seeds=[777, 1234, 12345, 000, 1000, 20, 30, 33, 90, 10], gen_model_to_use: str = "VGAN"):
-    """Pipeline for the outlier detection experiments
-
-    This function will run the outlier detection experiments in a collection of datasets and for a group of outlier detection models.
-    Additionally, the funcition is capable of, given the existence of a version of VGAN/VMMD, load it and use it for its own porpuse
-
-    Args:
-        datasets (list): list of datasets to run the experiments in
-        outlier_detection_models (list): list of outlier detection models to run the experiments withs (besides vgan ensemble)
-        base_methods (list): List of base_estimators to employ as the basis of the ensemble used in VGAN. It does NOT function as in SUOD and sel_SUOD,
-        but rather as FeatureBagging, where every model introduced here will be used in SEPARATE homogeneous ensembles.
-    """
-    results_df = pd.DataFrame(
-        {"Dataset": [], "Method": [], "AUC": [], "PRAUC": [], "F1": []})
-    for i, dataset in enumerate(datasets):
-        for j, base_method in enumerate(base_methods):
-            logger.info(
-                f"Running dataset {Fore.CYAN}{dataset}{Fore.RESET}, number {i+1} out of {datasets.__len__()} using method: {base_method.__class__.__name__} with VGAN, number {j+1} out of {len(base_methods)}")
-            for k, seed in enumerate(seeds):
-                logger.info(f"Seed number {Fore.CYAN}{k+1}{Fore.RESET}")
-                try:
-
-                    if os.path.isdir(Path() / "experiments" / f"{gen_model_to_use}" / f"{gen_model_to_use}_{dataset}"):
-                        logger.info(
-                            f"Launching {gen_model_to_use} experiments...")
-                        results_dict = pretrained_launch_outlier_detection_experiments(
-                            dataset_name=dataset, base_estimators=[clone(base_method)], seed=seed, gen_model_to_use=gen_model_to_use)
-                    else:
-                        results_dict = launch_outlier_detection_experiments(
-                            dataset_name=dataset, base_estimators=[
-                                clone(base_method)],
-                            epochs=2000, temperature=10, seed=seed, gen_model_to_use=gen_model_to_use)
-                    results_dict["Method"] = base_method.__class__.__name__
-                    results_df = results_df._append(
-                        results_dict, ignore_index=True)
-
-                except:
-                    logger.warning(
-                        f"Error found during exection in dataset: {dataset}")
-                    pass
-
-                results_df.to_csv(Path() / "experiments" /
-                                  "Outlier_Detection" / f"Results_{gen_model_to_use}_{[method.__class__.__name__ for method in base_methods].__repr__()}_all_datasets.csv")
-
-
-def pipeline_outlier_detection_classic_od(datasets: list, outlier_detection_models: list = None, experimental_settings:
-                                          np.array = None, base_methods: list = [], seeds=[777, 1234, 12345, 11, 1000, 20, 30, 33, 90, 10]):
-    """Pipeline for the outlier detection experiments
-
-    This function will run the outlier detection experiments in a collection of datasets and for a group of outlier detection models.
-    Additionally, the funcition is capable of, given the existence of a version of VGAN/VMMD, load it and use it for its own porpuse
-
-    Args:
-        datasets (list): list of datasets to run the experiments in
-        outlier_detection_models (list): list of outlier detection models to run the experiments withs (besides vgan ensemble)
-        base_methods (list): List of base_estimators to employ as the basis of the ensemble used in VGAN. It does NOT function as in SUOD and sel_SUOD,
-        but rather as FeatureBagging, where every model introduced here will be used in SEPARATE homogeneous ensembles.
-    """
-    results_df = pd.DataFrame(
-        {"Dataset": [], "Method": [], "AUC": [], "PRAUC": [], "F1": []})
-    for i, dataset in enumerate(datasets):
-        for j, method in enumerate(base_methods):
-            logger.info(
-                f"Running dataset {Fore.CYAN}{dataset}{Fore.RESET}, number {i+1} out of {datasets.__len__()} using method: {method.__class__.__name__} unensembled, number {j+1} out of {len(base_methods)}")
-            for seed in seeds:
-                try:
-
-                    X_train, X_test, y_test = load_data(dataset)
-                    base_method = clone(method)
-                    base_method.fit(X_train)
-                    decision_function_scores = base_method.decision_function(
-                        X_test)
-
-                    results_dict = {"Dataset": dataset,
-                                    "AUC": auc(y_test, decision_function_scores),
-                                    "PRAUC": average_precision_score(y_test, decision_function_scores),
-                                    "F1": f1_score(y_test, (decision_function_scores > np.quantile(decision_function_scores, .80)) * 1)}
-
-                    results_dict["Method"] = base_method.__class__.__name__
-
-                    results_df = results_df._append(
-                        results_dict, ignore_index=True)
-                except:
-                    logger.warning(
-                        f"Error found during exection in dataset: {dataset} with method {base_method.__class__.__name__}")
-                    pass
-
-        results_df.to_csv(Path() / "experiments" /
-                          "Outlier_Detection" / f"Results_{[method.__class__.__name__ for method in base_methods].__repr__()}_all_datasets.csv")
+def timeout_call(signum, frame):
+    raise TimeoutError("Time excedeed the intended execution time")
 
 
 def pipeline_outlier_detection_ens_od(datasets: list, outlier_detection_models: list = None, experimental_settings: np.array = None,
-                                      base_methods: list = [], seeds=[777, 1234, 12345, 000, 1000, 20, 30, 33, 90, 10], num_members=100):
+                                      base_methods: list = [], seeds=[777, 1234, 12345, 000, 1000, 20, 30, 33, 90, 10], base_subspace_selector: ss.BaseSubspaceSelector = ss.HiCS()):
     """Pipeline for the outlier detection experiments
 
     This function will run the outlier detection experiments in a collection of datasets and for a group of outlier detection models.
@@ -137,26 +53,80 @@ def pipeline_outlier_detection_ens_od(datasets: list, outlier_detection_models: 
     """
     results_df = pd.DataFrame(
         {"Dataset": [], "Method": [], "AUC": [], "PRAUC": [], "F1": []})
+    time_df = pd.DataFrame(
+        {"Dataset": [], "Time": []}
+    )
     for i, dataset in enumerate(datasets):
         for j, base_method in enumerate(base_methods):
             logger.info(
-                f"Running dataset {Fore.CYAN}{dataset}{Fore.RESET}, number {i+1} out of {datasets.__len__()} using method: {base_method.__class__.__name__} with Feature Bagging, number {j+1} out of {len(base_methods)}")
+                f"Running dataset {Fore.CYAN}{dataset}{Fore.RESET}, number {i+1} out of {datasets.__len__()} using method: {base_method.__class__.__name__} with {Fore.CYAN}{base_subspace_selector.__class__.__name__}{Fore.RESET}, number {j+1} out of {len(base_methods)}")
+
+            assert base_subspace_selector.__class__.__name__ != "ELM", "ELM are not supported by this pipeline"
+            X_train, X_test, y_test = load_data(dataset)
+            subspace_selector = base_subspace_selector
+            path_subspace = Path() / "experiments" / "Outlier_Detection" / "COMPETITORS" / \
+                "subspaces" / \
+                f"{subspace_selector.__class__.__name__}_{dataset}.npz"
+            path_metric = Path() / "experiments" / "Outlier_Detection" / "COMPETITORS" / "metrics" / \
+                f"{subspace_selector.__class__.__name__}_{dataset}.npz"
+            path_results = Path() / "experiments" / "Outlier_Detection" / "COMPETITORS" / \
+                f"Results_{subspace_selector.__class__.__name__}_{[method.__class__.__name__ for method in base_methods].__repr__()}_all_datasets.csv"
+            path_times = Path() / "experiments" / "Outlier_Detection" / "COMPETITORS" / \
+                f"Times_{subspace_selector.__class__.__name__}_all_datasets.csv"
+
+            if os.path.isfile(path_subspace) and subspace_selector.__class__.__name__ != "CAE":
+                try:
+                    subspace_selector.subspaces = np.load(path_subspace)[
+                        "arr_0"]
+                except:
+                    subspace_selector.subspaces = None
+                try:
+                    subspace_selector.metric = np.load(path_metric)["arr_0"]
+                except:
+                    subspace_selector.metric = None
+            else:
+                try:
+                    signal.signal(signal.SIGALRM, handler=timeout_call)
+                    tic = time.time()
+                    signal.alarm(7200)
+                    subspace_selector.fit(X_train)
+                    toc = time.time()
+                    signal.alarm(0)
+
+                except TimeoutError:
+                    signal.alarm(0)
+                    toc = time.time()
+                    logger.warning(
+                        f"Timeout for ss method {subspace_selector.__class__.__name__} in {dataset}!")
+                    results_dict = {"Dataset": dataset,
+                                    "AUC": "TIME OUT",
+                                    "PRAUC": "TIME OUT",
+                                    "F1": "TIME OUT"}
+                    time_dict = {"Dataset": dataset, "Time": 7200}
+                    results_df = results_df._append(
+                        results_dict, ignore_index=True)
+                    time_df = time_df._append(time_dict, ignore_index=True)
+                    results_df.to_csv(path_results)
+                    time_df.to_csv(path_times)
+                    break
+                time_dict = {"Dataset": dataset, "Time": toc-tic}
+                time_df = time_df._append(time_dict, ignore_index=True)
+                time_df.to_csv(path_times)
+                np.savez(path_subspace,
+                         subspace_selector.subspaces)
+                np.savez(path_metric,
+                         subspace_selector.metric)
+
             for seed in seeds:
                 try:
-
-                    X_train, X_test, y_test = load_data(dataset)
                     random.seed(seed)
-                    # We avoid the use of PyOD's implementation of FB as it doesn't support parallelism. However, we use their exact implementation to draw subspaces
-                    subspaces = np.array(numeric_to_boolean([generate_bagging_indices(random_state=random.randint(0, 10000), n_features=X_train.shape[1], bootstrap_features=None, min_features=int(
-                        0.5*X_train.shape[1]), max_features=X_train.shape[1] + 1).tolist() for i in range(num_members)], n_features=X_train.shape[1]))
-
                     ensemble_method = sel_SUOD(base_estimators=[clone(
-                        base_method)], subspaces=subspaces, n_jobs=48, bps_flag=False, approx_flag_global=False)
+                        base_method)], subspaces=subspace_selector.subspaces, n_jobs=48, bps_flag=False, approx_flag_global=False)
                     ensemble_method.fit(X_train)
                     decision_function_scores = ensemble_method.decision_function(
                         X_test)
                     decision_function_scores = aggregator_funct(
-                        decision_function_scores, type="avg")
+                        decision_function_scores, type="avg", weights=subspace_selector.metric)
                     results_dict = {"Dataset": dataset,
                                     "AUC": auc(y_test, decision_function_scores),
                                     "PRAUC": average_precision_score(y_test, decision_function_scores),
@@ -169,106 +139,130 @@ def pipeline_outlier_detection_ens_od(datasets: list, outlier_detection_models: 
                 except:
                     logger.warning(
                         f"Error found during exection in dataset: {dataset} with method {base_method.__class__.__name__}")
-                    pass
+                    continue
 
-                results_df.to_csv(Path() / "experiments" /
-                                  "Outlier_Detection" / "ENSEMBLE" / f"Results_ENSEMBLED_{[method.__class__.__name__ for method in base_methods].__repr__()}_{num_members}_all_datasets.csv")
+                results_df.to_csv(path_results)
 
 
-def pipeline_gof_test(datasets, gen_model_to_use="VGAN"):
+def pipeline_outlier_detection_ELM_od(datasets: list, outlier_detection_models: list = None, experimental_settings: np.array = None,
+                                      base_methods: list = [], seeds=[777, 1234, 12345, 000, 1000, 20, 30, 33, 90, 10]):
+    """Pipeline for the outlier detection experiments
 
+    This function will run the outlier detection experiments in a collection of datasets and for a group of outlier detection models.
+    Additionally, the funcition is capable of, given the existence of a version of VGAN/VMMD, load it and use it for its own porpuse
+
+    Args:
+        datasets (list): list of datasets to run the experiments in
+        outlier_detection_models (list): list of outlier detection models to run the experiments withs (besides vgan ensemble)
+        base_methods (list): List of base_estimators to employ as the basis of the ensemble used in VGAN. It does NOT function as in SUOD and sel_SUOD,
+        but rather as FeatureBagging, where every model introduced here will be used in SEPARATE homogeneous ensembles.
+    """
     results_df = pd.DataFrame(
-        {"Dataset": [], "p-value": [], "subspace_count": []})
-    for i, dataset in enumerate(datasets):
-        logger.info(
-            f"Runnig GOF test for {gen_model_to_use} in dataset: {Fore.CYAN}{dataset}{Fore.RESET}; number {i+1} out of {datasets.__len__()}")
+        {"Dataset": [], "Method": [], "AUC": [], "PRAUC": [], "F1": []})
+    time_df = pd.DataFrame(
+        {"Dataset": [], "Time": []}
+    )
+    path_results = Path() / "experiments" / "Outlier_Detection" / "COMPETITORS" / \
+        f"Results_ELM_{[method.__class__.__name__ for method in base_methods].__repr__()}_all_datasets.csv"
+    path_times = Path() / "experiments" / "Outlier_Detection" / "COMPETITORS" / \
+        f"Times_ELM_all_datasets.csv"
 
-        try:
-            pvalue, count = check_if_myopicity_was_uphold(
-                dataset_name=dataset, gen_model_to_use=gen_model_to_use)
-            results_dict = {"Dataset": dataset,
-                            "p-value": pvalue,
-                            "subspace_count": count}
-            results_df = results_df._append(
-                results_dict, ignore_index=True)
-            results_df.to_csv(Path() /
-                              "experiments" / "Outlier_Detection" / f"Results_GOF_{gen_model_to_use}_all_datasets.csv")
-        except:
-            logger.warning(
-                f"Error found during exection in dataset: {dataset}")
-            pass
+    for i, dataset in enumerate(datasets):
+        for j, base_method in enumerate(base_methods):
+            logger.info(
+                f"Running dataset {Fore.CYAN}{dataset}{Fore.RESET}, number {i+1} out of {datasets.__len__()} using method: {base_method.__class__.__name__} with {Fore.CYAN}ELM{Fore.RESET}, number {j+1} out of {len(base_methods)}")
+            for seed in seeds:
+
+                X_train, X_test, y_test = load_data(dataset)
+                subspace_selector = ss.ELM(random_state=seed)
+                tic = time.time()
+                subspace_selector.fit(X_train)
+                toc = time.time()
+
+                time_dict = {"Dataset": dataset, "Time": toc-tic}
+                time_df = time_df._append(time_dict, ignore_index=True)
+                time_df.to_csv(path_times)
+
+                try:
+                    random.seed(seed)
+                    subspace_selector.fit_odm(
+                        X_train=X_train, base_odm=base_method)
+                    decision_function_scores = subspace_selector.decision_function_odm(
+                        X_test)
+                    decision_function_scores = aggregator_funct(
+                        decision_function_scores, type="avg", weights=subspace_selector.metric)
+                    results_dict = {"Dataset": dataset,
+                                    "AUC": auc(y_test, decision_function_scores),
+                                    "PRAUC": average_precision_score(y_test, decision_function_scores),
+                                    "F1": f1_score(y_test, (decision_function_scores > np.quantile(decision_function_scores, .80)) * 1)}
+
+                    results_dict["Method"] = base_method.__class__.__name__
+
+                    results_df = results_df._append(
+                        results_dict, ignore_index=True)
+                except:
+                    logger.warning(
+                        f"Error found during exection in dataset: {dataset} with method {base_method.__class__.__name__}")
+                    continue
+
+                results_df.to_csv(path_results)
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
-    datasets = ["20news_0",
-                "MVTec-AD_bottle",
-                "InternetAds",
-                "agnews_0",
-                "amazon",
-                "imdb",
-                "yelp",
-                "MNIST-C_brightness",
-                "CIFAR10_0",
-                "FashionMNIST_0",
-                "SVHN_0",
-                "speech",
-                "musk",
-                "mnist",
-                "optdigits",
-                "SpamBase",
-                "landsat",
-                "satellite",
-                "satimage-2",
-                "Ionosphere",
-                "WPBC",
-                "letter",
-                "WDBC",
-                "fault",
-                "annthyroid",
-                "cardio",
-                "Cardiotocography",
-                "Waveform",
-                "Hepatitis",
-                "Lymphography",
-                "pendigits",
-                "wine",
-                "vowels",
-                "PageBlocks",
-                "breastw",
-                "Stamps",
-                "WBC",
-                "Pima",
-                "yeast",
-                "thyroid",
-                "vertebral",
-                "Wilt"]
+    datasets = [  # "20news_0",
+        # "MVTec-AD_bottle",
+        # "InternetAds",
+        # "agnews_0",
+        # "amazon",
+        # "imdb",
+        # "yelp",
+        # "MNIST-C_brightness",
+        # "CIFAR10_0",
+        # "FashionMNIST_0",
+        # "SVHN_0",
+        # "speech",
+        # "musk",
+        # "mnist",
+        # "optdigits",
+        # "SpamBase",
+        # "landsat",
+        # "satellite",
+        # "satimage-2",
+        # "Ionosphere",
+        # "WPBC",
+        # "letter",
+        # "WDBC",
+        # "fault",
+        "annthyroid",
+        # "cardio",
+        # "Cardiotocography",
+        # "Waveform",
+        # "Hepatitis",
+        # "Lymphography",
+        # "pendigits",
+        "wine",
+        "vowels",
+        "PageBlocks",
+        "breastw",
+        "Stamps",
+        "WBC",
+        "Pima",
+        "yeast",
+        "thyroid",
+        "vertebral",
+        "Wilt",
+        "vertebral",
+        "Wilt"]
 
-    # pipeline_outlier_detection_vgan( datasets, base_methods=[CBLOF()], gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_vgan(datasets, base_methods=[ECOD()], gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_vgan(datasets, base_methods=[COPOD()], gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_vgan(datasets, base_methods=[KNN()], gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_vgan(datasets, base_methods=[LOF()], gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_vgan(
-    #    datasets, base_methods=[CBLOF()], gen_model_to_use="VMMD")
-    # pipeline_outlier_detection_vgan(
-    #    datasets, base_methods=[ECOD()], gen_model_to_use="VMMD")
-    # pipeline_outlier_detection_vgan(
-    #    datasets, base_methods=[COPOD()], gen_model_to_use="VMMD")
-    # pipeline_outlier_detection_vgan(
-    #    datasets, base_methods=[KNN()], gen_model_to_use="VMMD")
-    # pipeline_outlier_detection_vgan(datasets, base_methods=[LOF()], gen_model_to_use="VMMD")
-    # pipeline_gof_test(datasets=datasets, gen_model_to_use="VMMD")
-    # pipeline_gof_test(datasets=datasets, gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_classic_od(datasets, base_methods=[ECOD()])
-    # pipeline_outlier_detection_classic_od(datasets, base_methods=[COPOD()])
-    # pipeline_outlier_detection_classic_od(datasets, base_methods=[CBLOF()])
-    # pipeline_outlier_detection_ens_od(datasets, base_methods={LOF()})
-    # pipeline_outlier_detection_ens_od(datasets, base_methods={CBLOF()})
-    # pipeline_outlier_detection_ens_od(datasets, base_methods={ECOD()})
-    for num in np.linspace(50, 500, 5, dtype=int):
-        pipeline_outlier_detection_ens_od(
-            datasets, base_methods={COPOD()}, num_members=num)
-        pipeline_outlier_detection_ens_od(
-            datasets, base_methods={ECOD()}, num_members=num)
+for base_method in [KNN(), CBLOF(), ECOD(), COPOD()]:
+    pipeline_outlier_detection_ens_od(
+        datasets, base_methods=[base_method], base_subspace_selector=ss.HiCS())
+    pipeline_outlier_detection_ens_od(
+        datasets, base_methods=[
+            base_method], base_subspace_selector=ss.CAE()
+    )
+    pipeline_outlier_detection_ens_od(
+        datasets, base_methods=[base_method], base_subspace_selector=ss.CLIQUE())
+    pipeline_outlier_detection_ELM_od(datasets, base_methods=[base_method])
