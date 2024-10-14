@@ -1,9 +1,3 @@
-"""File containing all of the subspace selection methods. Each method is implemented in its own class, inheriting
-basic properties from the base class.
-This base class has to store a:
-     .subsapce: type np.array[list[bool]]. np.array of subspaces. Each subsapce is a list of boolean indiciating which feature is contained in the subsapce
-     .metric: type list[int]. List of a metric/quality associated to each subspace. It will get inizialized by ones. If not used/needed, leave it like that
-"""
 import random
 from src.modules.bin import main_hics as hics
 import numpy as np
@@ -19,13 +13,49 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from pyod.models.base import BaseDetector
 from pyod.models.lof import LOF
 from sklearn import clone
-from concrete_autoencoder import ConcreteAutoencoderFeatureSelector
-from keras.layers import Dense, Dropout, LeakyReLU
+# from concrete_autoencoder import ConcreteAutoencoderFeatureSelector
+# from keras.layers import Dense, Dropout, LeakyReLU
 import logging
+import multiprocessing
+import time
+from torch.utils.data import DataLoader
+
 logger = logging.getLogger(__name__)
 
 
+def timeout(seconds):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            manager = multiprocessing.Manager()
+            return_dict = manager.dict()
+            proc = multiprocessing.Process(
+                target=func, args=(*args, return_dict), kwargs=kwargs)
+            proc.start()
+
+            start = time.time()
+            while (time.time() - start) < seconds and proc.is_alive():
+                pass
+            if proc.is_alive():
+                proc.terminate()
+                raise TimeoutError("HiCS timeout!")
+
+            proc.join()
+            return return_dict.values()[0], return_dict.values()[1]
+        return wrapper
+
+    return decorator
+
+
 class BaseSubspaceSelector:
+    """Base class for all of the subspace selection methods. Each method is implemented in its own class, inheriting
+    basic properties from the base class.
+
+    This base class has to store a:
+        .subsapce: type np.array[list[bool]]. np.ndarray of subspaces. Each subsapce is a list of boolean indiciating which feature is contained in the subsapce
+        .metric: type list[int]. List of a metric/quality associated to each subspace. It will get inizialized by ones. If not used/needed, leave it like that
+        .trained: type bool.  Boolean indicating wether the method has been trained or not. Useful for methods that have branching functionality
+    """
+
     def __init__(self) -> None:
         self.subspaces = None
         self.metric = None
@@ -66,7 +96,11 @@ class HiCS(BaseSubspaceSelector):
         self.__onlySubspace = []
         self.silent = silent
 
-    def __calculate_the_subspaces(self, X_train: np.ndarray):
+    # The timeout on HiCS has to be set this way since it comes from a NIM implementation, and one can't use python's signal alarms.
+    # Outsourcing the exception call to a python's signal is still the prefered choice for implementing a timeout, rather than using
+    # multiprocessing timeouts on single process.
+    @timeout(7200)
+    def __calculate_the_subspaces(self, X_train: np.ndarray, return_dict: list):
 
         # Nim has troubles dealing with the numpy array direclty, so we store it first as a csv for it to read it
         np.savetxt(Path("src/modules/bin/data.csv"), X_train, delimiter=";")
@@ -86,8 +120,10 @@ class HiCS(BaseSubspaceSelector):
         contrast = []
         for element in results:
             contrast.append(element[0])
-
-        return contrast, numeric_to_boolean(subspaces, X_train.shape[1])
+        return_dict["contrast"] = np.array(contrast)
+        return_dict["subspaces"] = np.array(numeric_to_boolean(
+            subspaces, X_train.shape[1]))
+        return return_dict
 
     def fit(self, X_train):
         """Fits the HiCS method
@@ -102,7 +138,7 @@ class HiCS(BaseSubspaceSelector):
 
 class CLIQUE(BaseSubspaceSelector):
     """Class for the CLIQUE method
-    We select the subsapces where a cluster is fitted. 
+    We select the subsapces where a cluster is fitted.
 
     Inherits:
         BaseSubspaceSelector
@@ -126,7 +162,6 @@ class CLIQUE(BaseSubspaceSelector):
         current_dim = 2
         number_of_features = np.shape(data)[1]
         while (current_dim <= number_of_features) & (len(dense_units) > 0) & (current_dim <= self.max_dim):
-            print("\n", str(current_dim), " dimensional clusters:")
             dense_units = get_dense_units_for_dim(
                 data, dense_units, current_dim, self.xsi, self.tau)
             i = self.subspaces.__len__() - 1
@@ -137,7 +172,8 @@ class CLIQUE(BaseSubspaceSelector):
                     pass
                 self.subspaces.append(list(cluster.dimensions))
             current_dim += 1
-        self.subspaces = numeric_to_boolean(self.subspaces, number_of_features)
+        self.subspaces = np.array(numeric_to_boolean(
+            self.subspaces, number_of_features))
         self.trained = True
 
 
@@ -187,6 +223,23 @@ class ELM(BaseSubspaceSelector):
         if self.hidden_neurons is None:
             self.hidden_neurons = [500, 100]
 
+    def _deep_representation(self, net, X):
+        x_reduced = []
+
+        with torch.no_grad():
+            loader = DataLoader(X, batch_size=self.batch_size,
+                                drop_last=False, pin_memory=True,
+                                shuffle=False)
+            for batch_x in loader:
+                batch_x = batch_x.float().to(self.device)
+                batch_x_reduced = net(batch_x)
+                x_reduced.append(batch_x_reduced)
+
+        x_reduced = torch.cat(x_reduced).data.cpu().numpy()
+        x_reduced = StandardScaler().fit_transform(x_reduced)
+        x_reduced = np.tanh(x_reduced)
+        return x_reduced
+
     def fit(self, X_train):
         n_samples, n_features = X_train.shape[0], X_train.shape[1]
 
@@ -205,11 +258,11 @@ class ELM(BaseSubspaceSelector):
         }
 
         ensemble_seeds = np.random.randint(0, 100000, self.n_ensemble)
+        self.net_lst = []
         for i in range(self.n_ensemble):
             # instantiate network class and seed random seed
             net = MLPnet(**network_params).to(self.device)
             torch.manual_seed(ensemble_seeds[i])
-            self.net_lst = []
 
             # initialize network parameters
             for name, param in net.named_parameters():
@@ -217,8 +270,10 @@ class ELM(BaseSubspaceSelector):
                     torch.nn.init.normal_(param, mean=0., std=1.)
 
             self.net_lst.append(net)
+        self.trained = True
 
     def fit_odm(self, X_train: np.ndarray, base_odm: BaseDetector = LOF()):
+        assert self.trained, "The ELMs have not been initialized. Run self.fit"
         odm_list = []
         for i, net in enumerate(self.net_lst):
             logger.info(f"Training ELM {i+1} out of {self.net_lst.__len__()}")
@@ -228,22 +283,27 @@ class ELM(BaseSubspaceSelector):
             odm.fit(x_reduced)
             odm_list.append(odm)
         self.odm_trained = True
+        self.odm_list = odm_list
 
     def decision_function_odm(self, X_test):
+        assert self.trained, "The ELMs have not been initialized. Run self.fit"
         assert self.odm_trained, "No ODM has been trained"
 
         decision_function = []
-        for odm in self.odm_list:
-            decision_function.append(odm.decision_function(X_test))
+        for i, net in enumerate(self.net_lst):
+            odm = self.odm_list[i]
+            x_reduced = self._deep_representation(net, X_test)
 
-        return decision_function
+            decision_function.append(odm.decision_function(x_reduced).tolist())
+
+        return np.transpose(np.array(decision_function))
 
 
 class CAE(BaseSubspaceSelector):
-    def __init__(self, K: int = 20, output_function=decoder,
+    def __init__(self, K: int = 20, output_function=None,
                  num_epochs: int = 300, batch_size: int = None,
                  learning_rate: float = .001, start_temp: float = 10.0,
-                 min_temp: float = .1, tryout_limit: int = 1) -> None:
+                 min_temp: float = .1, tryout_limit: int = 5) -> None:
         super().__init__()
         self.K = K
         self.output_function = output_function
@@ -254,12 +314,33 @@ class CAE(BaseSubspaceSelector):
         self.min_temp = min_temp
         self.tryout_limit = tryout_limit
 
-    def fit(self, X_train):
-        selector = ConcreteAutoencoderFeatureSelector(self.K, self.output_function, self.num_epochs,
+    def give_default_output_function(self, X_train_dims):
+        def output_function(x):
+            x = Dense(int(X_train_dims/2.5))(x)
+            x = LeakyReLU(0.2)(x)
+            x = Dropout(0.1)(x)
+            x = Dense(int(X_train_dims/2.5))(x)
+            x = LeakyReLU(0.2)(x)
+            x = Dropout(0.1)(x)
+            x = Dense(int(X_train_dims))(x)
+            return x
+        return output_function
+
+    def fit(self, X_train: np.ndarray):
+        if self.output_function == None:
+            self.__output_function__ = self.give_default_output_function(
+                X_train.shape[1])
+        else:
+            self.__output_function__ = self.output_function
+
+        if self.K > X_train.shape[1]/2:
+            self.K = int(X_train.shape[1]/2)
+
+        selector = ConcreteAutoencoderFeatureSelector(self.K, self.__output_function__, self.num_epochs,
                                                       self.batch_size, self.learning_rate,
                                                       self.start_temp, self.min_temp, self.tryout_limit)
         selector.fit(X_train, Y=None)
-        self.subspaces = [(selector.get_support(indices=False) > 0).tolist()]
-        self.weights = [selector.get_support(indices=False).tolist()]
+        self.subspaces = np.array(
+            [(selector.get_support(indices=False) > 0).tolist()])
 
         self.trained = True
