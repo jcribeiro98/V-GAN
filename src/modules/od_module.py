@@ -120,11 +120,11 @@ class VMMD(VMMD):
         results = []
 
         x_data = normalize(x_data, axis=0)
-        x_sample = torch.mps.Tensor(pd.DataFrame(
-            x_data).sample(count).to_numpy()).to('mps:0')
+        x_sample = torch.Tensor(pd.DataFrame(
+            x_data).sample(count).to_numpy()).to(self.device)
         u_subspaces = self.generate_subspaces(count)
         ux_sample = u_subspaces * \
-            torch.mps.Tensor(x_sample).to(self.device) + \
+            torch.Tensor(x_sample).to(self.device) + \
             torch.mean(x_sample, dim=0)*(~u_subspaces)
         if type(bandwidth) == float:
             bandwidth = [bandwidth]
