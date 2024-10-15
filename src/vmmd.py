@@ -146,7 +146,7 @@ class VMMD:
         self.batch_size = min(self.batch_size, train_size)
 
         device = self.device
-        generator = self.get_the_networks(
+        generator, _ = self.get_the_networks(
             ndims, latent_size, device=device)
         optimizer = torch.optim.Adadelta(
             generator.parameters(), lr=self.lr, weight_decay=self.weight_decay)

@@ -144,12 +144,12 @@ class VGAN:
         if device == None:
             device = self.device
         self.generator = Generator_big(
-            img_size=ndims, latent_size=max(int(ndims/16), 1)).to(device)
+            img_size=ndims, latent_size=max(int(ndims/16), 2)).to(device)
         self.generator.load_state_dict(torch.load(
             path_to_generator, map_location=device))
         self.generator.eval()  # This only works for dropout layers
         self.generator_optimizer = f'Loaded Model from {path_to_generator} with {ndims} dimensions in the latent space'
-        self.__latent_size = max(int(ndims/16), 1)
+        self.__latent_size = max(int(ndims/16), 2)
 
     def get_the_networks(self, ndims: int, latent_size: int, device: str = None) -> tuple:
         """Object function to obtain the networks' architecture
@@ -181,7 +181,7 @@ class VGAN:
             torch.mps.manual_seed(self.seed)
 
         # MODEL INTIALIZATION#
-        self.__latent_size = latent_size = max(int(X.shape[1]/16), 1)
+        self.__latent_size = latent_size = max(int(X.shape[1]/16), 2)
         ndims = X.shape[1]
         train_size = X.shape[0]
         self.batch_size = min(self.batch_size, train_size)
@@ -242,7 +242,8 @@ class VGAN:
                     # Make sure there is only 1 observation per row.
                     batch = batch.view(self.batch_size, -1)
                     if cuda:
-                        batch = batch.cuda()
+                        # float64 not suported
+                        batch = batch.to(torch.float32).cuda()
                     elif mps:
                         batch = batch.to(torch.float32).to(
                             torch.device('mps'))  # float64 not suported with mps
@@ -264,8 +265,15 @@ class VGAN:
 
                     # OPTIMIZATION STEP DETECTOR
                     det_optimizer.zero_grad()
-                    batch_loss_D = minusone.to('mps')*(loss_function(batch_enc, projected_batch_enc, fake_subspaces) - .1 *
-                                                       L2_distance_batch - .1*L2_distance_projected_batch)  # Constrained MMD Loss
+                    if cuda:
+                        batch_loss_D = minusone.to('cuda')*(loss_function(batch_enc, projected_batch_enc, fake_subspaces) - .1 *
+                                                            L2_distance_batch - .1*L2_distance_projected_batch)  # Constrained MMD Loss
+                    elif mps:
+                        batch_loss_D = minusone.to('mps')*(loss_function(batch_enc, projected_batch_enc, fake_subspaces) - .1 *
+                                                           L2_distance_batch - .1*L2_distance_projected_batch)  # Constrained MMD Loss
+                    else:
+                        batch_loss_D = minusone*(loss_function(batch_enc, projected_batch_enc, fake_subspaces) - .1 *
+                                                 L2_distance_batch - .1*L2_distance_projected_batch)  # Constrained MMD Loss
                     self.bandwidth = loss_function.bandwidth
                     batch_loss_D.backward()
                     det_optimizer.step()
@@ -280,7 +288,7 @@ class VGAN:
                     # Make sure there is only 1 observation per row.
                     batch = batch.view(self.batch_size, -1)
                     if cuda:
-                        batch = batch.cuda()
+                        batch = batch.to(torch.float32).cuda()
                     elif mps:
                         batch = batch.to(torch.float32).to(
                             torch.device('mps'))  # float64 not suported with mps
