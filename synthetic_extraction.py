@@ -34,7 +34,7 @@ def launch_outlier_detection_experiments(freq: int, base_estimators: list, epoch
         tuple: Returns the AUC, PRAUC and F1 of the ensemble obtained by VGAN subspaces
     """
 
-    X_train = generate_data_3d(freq, 10000)
+    X_train = generate_data_3d(freq, 10000, seed=seed)
     # X_train, X_test, y_test = load_data("Ionosphere")
 
     if gen_model_to_use == "VGAN":
@@ -45,7 +45,7 @@ def launch_outlier_detection_experiments(freq: int, base_estimators: list, epoch
     elif gen_model_to_use == "VMMD":
         vgan = VMMD(epochs=epochs,  batch_size=6000,
                     path_to_directory=Path() / "experiments" / "Synthetic" / "VMMD" /
-                    f"VMMD_{freq}", lr=0.01)
+                    f"VMMD_{freq}", lr=0.01, seed=seed)
     else:
         raise ValueError(f"{gen_model_to_use} is not a generator in the list")
 
