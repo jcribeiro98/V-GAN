@@ -90,12 +90,11 @@ def check_if_myopicity_was_uphold(dataset_name: str, gen_model_to_use="VGAN") ->
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
 
-    # epochs = [5000, 1100, 5000, 2500, 2000, 1600, 1500, 1900, 3000, 5000, 3100]
-    epochs = [1200, 2100, 2100, 3500]
+    epochs = [5000, 1100, 5000, 2600, 2100, 1600, 1500, 2150, 3000, 5000, 3300]
     proba_p1_array = []
     proba_p2_array = []
 
-    for i, freq in enumerate([.1, .4, .7, 1]):
+    for i, freq in enumerate([0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1]):
         proba_p1, proba_p2 = launch_outlier_detection_experiments(freq, [
             LOF()], gen_model_to_use="VMMD", seed=np.random.random_integers(10, 10000),   epochs=epochs[i])
 
