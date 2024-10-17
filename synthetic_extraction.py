@@ -45,7 +45,7 @@ def launch_outlier_detection_experiments(freq: int, base_estimators: list, epoch
     elif gen_model_to_use == "VMMD":
         vgan = VMMD(epochs=epochs,  batch_size=6000,
                     path_to_directory=Path() / "experiments" / "Synthetic" / "VMMD" /
-                    f"VMMD_{freq}", lr=0.01, seed=seed)
+                    f"VMMD_{freq}", lr=0.01)
     else:
         raise ValueError(f"{gen_model_to_use} is not a generator in the list")
 
@@ -93,13 +93,14 @@ if __name__ == "__main__":
     epochs = [5000, 1100, 5000, 2600, 2100, 1600, 1500, 2150, 3000, 5000, 3300]
     proba_p1_array = []
     proba_p2_array = []
+    freq_vec = []
+    for seed in [777, 1234, 12345, 000, 1000]:
+        for i, freq in enumerate([0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1]):
+            proba_p1, proba_p2 = launch_outlier_detection_experiments(freq, [
+                LOF()], gen_model_to_use="VMMD", seed=seed,   epochs=epochs[i])
 
-    for i, freq in enumerate([0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1]):
-        proba_p1, proba_p2 = launch_outlier_detection_experiments(freq, [
-            LOF()], gen_model_to_use="VMMD", seed=np.random.random_integers(10, 10000),   epochs=epochs[i])
-
-        proba_p1_array.append(proba_p1)
-        proba_p2_array.append(proba_p2)
-
-        pd.DataFrame({"p1": proba_p1_array, "p2": proba_p2_array}).to_csv(
-            f"experiments/Synthetic/table_result_{epochs}.csv")
+            proba_p1_array.append(proba_p1)
+            proba_p2_array.append(proba_p2)
+            freq_vec.append(freq)
+            pd.DataFrame({"p1": proba_p1_array, "p2": proba_p2_array, "frec": freq_vec}).to_csv(
+                f"experiments/Synthetic/table_result.csv")
