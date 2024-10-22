@@ -1,28 +1,15 @@
 from src.modules.od_module import VGAN, VMMD
 import numpy as np
-from pyod.models.ocsvm import OCSVM
-from pyod.models.ecod import ECOD
-from pyod.models.lof import LOF
-from pyod.models.feature_bagging import FeatureBagging
 from pathlib import Path
-import datetime
-from sklearn.preprocessing import normalize
 import pandas as pd
-from sklearn.metrics import roc_auc_score as auc
-from sklearn.metrics import average_precision_score, f1_score
-from sel_suod.models.base import sel_SUOD
-import itertools
-from sklearn.preprocessing import label_binarize
-from joblib.externals.loky import get_reusable_executor
-from data.get_datasets import load_data
 from src.modules.synthetic_module import generate_data_3d
 import logging
-from src.modules.tools import aggregator_funct
+import src.modules.ss_module as ss
 logger = logging.getLogger(__name__)
 
 
-def launch_outlier_detection_experiments(freq: int, base_estimators: list, epochs: int = 3000,
-                                         temperature: float = 0, seed: int = 777, gen_model_to_use: str = "VGAN") -> dict:
+def launch_extraction_experiments(freq: int, base_estimators: list, epochs: int = 3000,
+                                  temperature: float = 0, seed: int = 777, gen_model_to_use: str = "VMMD") -> dict:
     """Launch the outlier detection experiments for a given dataset
 
     Args:
@@ -61,30 +48,66 @@ def launch_outlier_detection_experiments(freq: int, base_estimators: list, epoch
     return proba_p1, proba_p2
 
 
-def check_if_myopicity_was_uphold(dataset_name: str, gen_model_to_use="VGAN") -> tuple:
-    """Given the dataset name, the function will return the p-value of the GOF test using the MMD with the recommended 
-    bandwidth in [Look for the paper I don't remember the surname of the authors rn].
+def launch_extraction_experiments_hics(freq: int, epochs: int = 3000,
+                                       temperature: float = 0, seed: int = 777, gen_model_to_use: str = "VGAN") -> dict:
+    """Launch the outlier detection experiments for a given dataset
 
     Args:
-        dataset_name (str): Name of the dataset as included in the json file 'datasets_file_name.json'
-
+        dataset_name (str): Name of the dataset to load
+        base_estimators (list): List including all base estimators to build the ensemble. If the length is = 1, 
+        then an homogeneus ensemble will be fitted.
+        directory (Path): Path to the directory one wishes to load to
     Returns:
-        float: p-value for the two-sampe non-parametric GoF test using the MMD with recommended bandwidth (by L2 distances)
+        tuple: Returns the AUC, PRAUC and F1 of the ensemble obtained by VGAN subspaces
     """
-    X_train, _, _ = load_data(dataset_name)
 
-    if gen_model_to_use == "VGAN":
-        vgan = VGAN()
-        vgan.load_models(Path() / "experiments" / "VGAN" /
-                         f"VGAN_{dataset_name}" / "models" / "generator_0.pt", ndims=X_train.shape[1])
-    elif gen_model_to_use == "VMMD":
-        vgan = VMMD()
-        vgan.load_models(Path() / "experiments" / "VMMD" /
-                         f"VMMD_{dataset_name}" / "models" / "generator_0.pt", ndims=X_train.shape[1])
-    vgan.approx_subspace_dist()
+    X_train = generate_data_3d(freq, 10000, seed=seed)
+    # X_train, X_test, y_test = load_data("Ionosphere")
 
-    return vgan.check_if_myopic(X_train, bandwidth=[
-        1, 0.1, 0.001, 0.0001], count=min(1000, X_train.shape[0]))["recommended bandwidth"].item(), vgan.subspaces.shape[0]
+    hics = ss.HiCS()
+    hics.fit(X_train)
+    hics.metric = (hics.metric-np.min(hics.metric)) / \
+        (np.max(hics.metric)-np.min(hics.metric)
+         )  # This ensures that the final share will be positive
+    hics.metric = hics.metric/hics.metric.sum()
+    print(pd.DataFrame(hics.subspaces, hics.metric))
+    proba_p2 = hics.metric[[hics.subspaces[i].tolist() in [[True, False, True], [
+        False, False, True], [False, True, True]] for i in range(hics.subspaces.__len__())]].sum()
+    proba_p1 = hics.metric[[hics.subspaces[i].tolist(
+    ) in [[True, True, False]] for i in range(hics.subspaces.__len__())]].sum()
+
+    return proba_p1, proba_p2
+
+
+def launch_extraction_experiments_gmd(freq: int, epochs: int = 3000,
+                                      temperature: float = 0, seed: int = 777, gen_model_to_use: str = "VGAN") -> dict:
+    """Launch the outlier detection experiments for a given dataset
+
+    Args:
+        dataset_name (str): Name of the dataset to load
+        base_estimators (list): List including all base estimators to build the ensemble. If the length is = 1, 
+        then an homogeneus ensemble will be fitted.
+        directory (Path): Path to the directory one wishes to load to
+    Returns:
+        tuple: Returns the AUC, PRAUC and F1 of the ensemble obtained by VGAN subspaces
+    """
+
+    X_train = generate_data_3d(freq, 10000, seed=seed)
+    # X_train, X_test, y_test = load_data("Ionosphere")
+
+    gmd = ss.GMD()
+    gmd.fit(X_train)
+    gmd.metric = (gmd.metric-np.min(gmd.metric)) / \
+        (np.max(gmd.metric)-np.min(gmd.metric)
+         )  # This ensures that the final share will be positive
+    gmd.metric = gmd.metric/gmd.metric.sum()
+    print(pd.DataFrame(gmd.subspaces, gmd.metric))
+    proba_p2 = gmd.metric[[gmd.subspaces[i].tolist() in [[True, False, True], [
+        False, False, True], [False, True, True], [True, True, True]] for i in range(gmd.subspaces.__len__())]].sum()
+    proba_p1 = gmd.metric[[gmd.subspaces[i].tolist(
+    ) in [[True, True, False]] for i in range(gmd.subspaces.__len__())]].sum()
+
+    return proba_p1, proba_p2
 
 
 if __name__ == "__main__":
@@ -96,11 +119,11 @@ if __name__ == "__main__":
     freq_vec = []
     for seed in [777, 1234, 12345, 000, 1000]:
         for i, freq in enumerate([0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1]):
-            proba_p1, proba_p2 = launch_outlier_detection_experiments(freq, [
-                LOF()], gen_model_to_use="VMMD", seed=seed,   epochs=epochs[i])
+            proba_p1, proba_p2 = launch_extraction_experiments_gmd(
+                freq, seed=seed,   epochs=epochs[i])
 
             proba_p1_array.append(proba_p1)
             proba_p2_array.append(proba_p2)
             freq_vec.append(freq)
-            pd.DataFrame({"p1": proba_p1_array, "p2": proba_p2_array, "frec": freq_vec}).to_csv(
-                f"experiments/Synthetic/table_result.csv")
+            pd.DataFrame({"p1": proba_p1_array, "p2": proba_p2_array, "frac": freq_vec}).to_csv(
+                f"experiments/Synthetic/table_result_gmd.csv")
