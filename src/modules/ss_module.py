@@ -3,6 +3,7 @@ from src.modules.bin import main_hics as hics
 import numpy as np
 import pandas as pd
 import os
+from gmd import GMD
 from src.modules.tools import numeric_to_boolean
 from pathlib import Path
 from data.get_datasets import load_data
@@ -21,6 +22,8 @@ import time
 from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
+
+GMD_class = GMD
 
 
 def timeout(seconds):
@@ -174,6 +177,24 @@ class CLIQUE(BaseSubspaceSelector):
             current_dim += 1
         self.subspaces = np.array(numeric_to_boolean(
             self.subspaces, number_of_features))
+        self.trained = True
+
+
+class GMD(BaseSubspaceSelector):
+    def __init__(self, alpha=0.1, runs=100, random_state=None) -> None:
+        super().__init__()
+        self.alpha = alpha
+        self.runs = runs
+        self.random_state = random_state
+
+    def fit(self, data):
+        gmd = GMD_class(self.alpha, self.runs, self.random_state)
+        gmd.fit(data)
+        number_of_features = np.shape(data)[1]
+        self.subspaces = list(gmd.subspaces_.values())
+        self.subspaces = np.array(numeric_to_boolean(
+            self.subspaces, number_of_features))
+        self.metric = np.array(list(gmd.contrasts_.values()))
         self.trained = True
 
 
