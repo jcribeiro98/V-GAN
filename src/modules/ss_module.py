@@ -1,11 +1,12 @@
-import random
 from src.modules.bin import main_hics as hics
 import numpy as np
 import pandas as pd
 import os
+import umap
+import sklearn.decomposition as sk
+from gmd import GMD
 from src.modules.tools import numeric_to_boolean
 from pathlib import Path
-from data.get_datasets import load_data
 from src.packages.Clique.Clique import get_dense_units_for_dim, get_one_dim_dense_units, get_clusters
 from src.modules.network_module import MLPnet
 import torch
@@ -21,6 +22,8 @@ import time
 from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
+
+GMD_class = GMD
 
 
 def timeout(seconds):
@@ -174,6 +177,24 @@ class CLIQUE(BaseSubspaceSelector):
             current_dim += 1
         self.subspaces = np.array(numeric_to_boolean(
             self.subspaces, number_of_features))
+        self.trained = True
+
+
+class GMD(BaseSubspaceSelector):
+    def __init__(self, alpha=0.1, runs=100, random_state=None) -> None:
+        super().__init__()
+        self.alpha = alpha
+        self.runs = runs
+        self.random_state = random_state
+
+    def fit(self, data):
+        gmd = GMD_class(self.alpha, self.runs, self.random_state)
+        gmd.fit(data)
+        number_of_features = np.shape(data)[1]
+        self.subspaces = list(gmd.subspaces_.values())
+        self.subspaces = np.array(numeric_to_boolean(
+            self.subspaces, number_of_features))
+        self.metric = np.array(list(gmd.contrasts_.values()))
         self.trained = True
 
 
@@ -344,3 +365,89 @@ class CAE(BaseSubspaceSelector):
             [(selector.get_support(indices=False) > 0).tolist()])
 
         self.trained = True
+
+
+class PCA(BaseSubspaceSelector):
+    def __init__(self, random_state=None, select_up_to_ratio=.95) -> None:
+        super().__init__()
+        self.random_state = random_state
+        self.select_up_to_ratio = .9
+
+    def fit(self, X_train):
+        pca = sk.PCA()
+        pca.fit(X_train)
+
+        self.metric = np.array(pca.explained_variance_ratio_)
+        last_selected_component = 0
+        selected_components_var_sum = self.metric[last_selected_component]
+
+        while selected_components_var_sum < self.select_up_to_ratio:
+            last_selected_component += 1
+            selected_components_var_sum += self.metric[last_selected_component]
+        self.__transform = pca.transform
+        self.__last_selected_component = last_selected_component
+        self.trained = True
+
+    def transform(self, X_sample):
+        X_transformed = self.__transform(X_sample)
+        return X_transformed[:, :self.__last_selected_component + 1]
+
+    def fit_odm(self, X_train: np.ndarray, base_odm: BaseDetector = LOF()):
+        self.__odm = base_odm
+        self.__odm.fit(self.transform(X_train))
+
+    def decision_function_odm(self, X_test):
+        return self.__odm.decision_function(self.transform(X_test))
+
+
+class UMAP(BaseSubspaceSelector):
+    def __init__(self, n_components=None, n_neighbors=15, random_state=None) -> None:
+        super().__init__()
+        self.n_components = n_components
+        self.random_state = random_state
+        self.n_neighbors = n_neighbors
+
+    def fit(self, X_train):
+        if self.n_components == None:
+            component_array = [int(i) for i in np.linspace(
+                5, max(int(X_train.shape[1]), 7), 5)]
+            component_array.sort()
+            dim_red = umap.UMAP(n_components=component_array[0],
+                                n_neighbors=self.n_neighbors, random_state=self.random_state, verbose=True)
+            dim_red.fit(X_train)
+            X_recon = dim_red.inverse_transform(
+                dim_red.transform(X_train))
+            current_rec_loss = np.linalg.norm(X_train-X_recon, axis=1).sum()
+            print(f"Reconstruction error: {current_rec_loss}")
+            self.__transform = dim_red.transform
+            for self.n_components in component_array[1:]:
+                dim_red = umap.UMAP(n_components=self.n_components,
+                                    n_neighbors=self.n_neighbors, random_state=self.random_state, verbose=True)
+                dim_red.fit(X_train)
+                X_recon = dim_red.inverse_transform(
+                    dim_red.transform(X_train))
+                rec_loss = np.linalg.norm(X_train-X_recon, axis=1).sum()
+                print(f"Reconstruction error: {rec_loss}")
+                if rec_loss < current_rec_loss:
+                    print(f"Reconstruction error lower than previous")
+                    self.__transform = dim_red.transform
+                    current_rec_loss = rec_loss
+                else:
+                    print(f"Best reconstruction error found")
+                    break
+        else:
+            dim_red = umap.UMAP(n_components=min([int(X_train.shape[1]), 100]),
+                                n_neighbors=self.n_neighbors, random_state=self.random_state, verbose=True, n_jobs=20)
+
+            dim_red.fit(X_train)
+            self.__transform = dim_red.transform
+
+    def transform(self, X_sample):
+        return self.__transform(X_sample)
+
+    def fit_odm(self, X_train: np.ndarray, base_odm: BaseDetector = LOF()):
+        self.__odm = base_odm
+        self.__odm.fit(self.transform(X_train))
+
+    def decision_function_odm(self, X_test):
+        return self.__odm.decision_function(self.transform(X_test))

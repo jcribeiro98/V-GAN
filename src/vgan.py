@@ -25,7 +25,7 @@ class VGAN:
     kernel learning is performed. The default values for the kernel are 
     '''
 
-    def __init__(self, batch_size=500, temperature=1, epochs=30, lr_G=0.007, lr_D=0.007, iternum_d=1, iternum_g=5, momentum=0.99, seed=777, weight_decay=0.04, path_to_directory=None):
+    def __init__(self, batch_size=500, temperature=0, epochs=30, lr_G=0.007, lr_D=0.007, iternum_d=1, iternum_g=5, momentum=0.99, seed=777, weight_decay=0.04, path_to_directory=None):
         self.storage = locals()
         self.train_history = defaultdict(list)
         self.batch_size = batch_size
@@ -84,8 +84,8 @@ class VGAN:
         fig, ax = plt.subplots()
         ax.plot(x, generator_y, color="cornflowerblue",
                 label="Generator loss", linewidth=2)
-        ax.plot(x, detector_y, color="black",
-                label="Detector loss", linewidth=2)
+        # ax.plot(x, detector_y, color="black",
+        #       label="Detector loss", linewidth=2)
 
         plt.xlabel("Epoch")
         plt.ylabel("Loss")
@@ -148,7 +148,8 @@ class VGAN:
         self.generator.load_state_dict(torch.load(
             path_to_generator, map_location=device))
         self.generator.eval()  # This only works for dropout layers
-        self.generator_optimizer = f'Loaded Model from {path_to_generator} with {ndims} dimensions in the latent space'
+        self.generator_optimizer = f'Loaded Model from {
+            path_to_generator} with {ndims} dimensions in the latent space'
         self.__latent_size = max(int(ndims/16), 1)
 
     def get_the_networks(self, ndims: int, latent_size: int, device: str = None) -> tuple:
@@ -245,7 +246,8 @@ class VGAN:
                         batch = batch.cuda()
                     elif mps:
                         batch = batch.to(torch.float32).to(
-                            torch.device('mps'))  # float64 not suported with mps
+                            # float64 not suported with mps
+                            torch.device('mps'))
 
                     # GET SUBSPACES AND ENCODING-DECODING
                     for p in detector.decoder.parameters():
@@ -254,7 +256,8 @@ class VGAN:
                     with torch.no_grad():
                         noise_tensor = Variable(noise_tensor.normal_())
                         fake_subspaces = Variable(
-                            generator(noise_tensor).clone().detach())  # Freeze G
+                            # Freeze G
+                            generator(noise_tensor).clone().detach())
                     projected_batch_enc, projected_batch_dec = detector(
                         fake_subspaces*batch + torch.less(batch, 1/batch.shape[1])*torch.mean(batch, dim=0))
                     L2_distance_batch = self.__distance(
@@ -283,7 +286,8 @@ class VGAN:
                         batch = batch.cuda()
                     elif mps:
                         batch = batch.to(torch.float32).to(
-                            torch.device('mps'))  # float64 not suported with mps
+                            # float64 not suported with mps
+                            torch.device('mps'))
                     # GET SUBSPACES AND ENCODING-DECODING
                     batch_enc, batch_dec = detector(batch)
                     noise_tensor = Variable(noise_tensor.normal_())

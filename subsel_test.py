@@ -1,6 +1,6 @@
 import pandas as pd
 import src.modules.bin.main_hics as hics
-from src.modules.ss_module import HiCS, CLIQUE, ELM, CAE
+from src.modules.ss_module import HiCS, CLIQUE, ELM, CAE, PCA, UMAP, GMD
 import numpy as np
 from data.get_datasets import load_data
 import signal
@@ -17,8 +17,7 @@ if __name__ == "__main__":
         # signal.signal(signal.SIGALRM, handler=timeout_call)
         # signal.alarm(10)
 
-        subspace_selection_model = ELM()
+        subspace_selection_model = UMAP(n_components=-1)
         subspace_selection_model.fit(X_train)
-        subspace_selection_model.fit_odm(X_train)
-        df = subspace_selection_model.decision_function_odm(X_test)
+        df = subspace_selection_model.transform(X_train)
         print(df)
