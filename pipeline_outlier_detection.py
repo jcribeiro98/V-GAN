@@ -325,7 +325,7 @@ for base_method in [LOF(), KNN(), CBLOF(), ECOD(), COPOD()]:
     # pipeline_outlier_detection_ens_od(
     #    datasets, base_methods=[base_method], base_subspace_selector=ss.CLIQUE())
     # pipeline_outlier_detection_ELM_od(datasets, base_methods=[base_method])
-    # pipeline_outlier_detection_dimred_od(
-    #    datasets, base_subspace_selector=ss.PCA(), base_methods=[base_method])
     pipeline_outlier_detection_dimred_od(
-        datasets, base_subspace_selector=ss.UMAP(n_components=-1), base_methods=[base_method])
+        datasets, base_subspace_selector=ss.PCA(), base_methods=[base_method])
+    # pipeline_outlier_detection_dimred_od(
+    #    datasets, base_subspace_selector=ss.UMAP(n_components=-1), base_methods=[base_method])
