@@ -25,7 +25,7 @@ class VGAN:
     kernel learning is performed. The default values for the kernel are 
     '''
 
-    def __init__(self, batch_size=500, temperature=0, epochs=30, lr_G=0.007, lr_D=0.007, iternum_d=1, iternum_g=5, momentum=0.99, seed=777, weight_decay=0.04, path_to_directory=None):
+    def __init__(self, batch_size=500, temperature=0, epochs=30, lr_G=0.007, lr_D=0.007, iternum_d=1, iternum_g=5, momentum=0.99, seed=777, weight_decay=0.04, path_to_directory=None, device=None):
         self.storage = locals()
         self.train_history = defaultdict(list)
         self.batch_size = batch_size
@@ -41,8 +41,11 @@ class VGAN:
         self.path_to_directory = path_to_directory
         self.generator_optimizer = None
         self.__elm = False
-        self.device = torch.device('cuda:0' if torch.cuda.is_available(
-        ) else 'mps:0' if torch.backends.mps.is_available() else 'cpu')
+        if device == None:
+            self.device = torch.device('cuda:0' if torch.cuda.is_available(
+            ) else 'mps:0' if torch.backends.mps.is_available() else 'cpu')
+        else:
+            self.device = device
         self.seed = 777
 
     def __normalize(x, dim=1):
@@ -180,6 +183,7 @@ class VGAN:
             torch.cuda.manual_seed(self.seed)
         elif mps:
             torch.mps.manual_seed(self.seed)
+        torch.manual_seed(self.seed)
 
         # MODEL INTIALIZATION#
         self.__latent_size = latent_size = max(int(X.shape[1]/16), 1)
@@ -203,16 +207,13 @@ class VGAN:
         loss_function = MMDLossConstrained(weight=self.temperature)
 
         # OPTIMIZATION STUFF
-        one = torch.mps.Tensor([1])
+        one = torch.Tensor([1]).to(self.device)
         minusone = one * -1
 
         # DATA LOADER#
-        if cuda:
-            data_loader = DataLoader(
-                X, batch_size=self.batch_size, drop_last=True, pin_memory=cuda, shuffle=True)
-        else:  # Uses CUDA if Available, other wise MPS or nothing
-            data_loader = DataLoader(
-                X, batch_size=self.batch_size, drop_last=True, pin_memory=mps, shuffle=True)
+
+        data_loader = DataLoader(
+            X, batch_size=self.batch_size, drop_last=True, pin_memory=self.device, shuffle=True)
         batch_number = data_loader.__len__()
 
         # BATCH LOOP#
@@ -224,14 +225,9 @@ class VGAN:
             print(f'\rEpoch {epoch} of {self.epochs}')
 
             # GET NOISE TENSORS#
-            if cuda:
-                noise_tensor = torch.cuda.FloatTensor(
-                    self.batch_size, latent_size).to(torch.device('cuda'))
-            elif mps:
-                noise_tensor = torch.mps.Tensor(
-                    self.batch_size, latent_size).to(torch.device('mps'))
-            else:
-                noise_tensor = torch.Tensor(self.batch_size, latent_size)
+
+            noise_tensor = torch.Tensor(
+                self.batch_size, latent_size).to(self.device)
 
             # ELM
             if self.__elm == True:
@@ -242,12 +238,9 @@ class VGAN:
                 for batch in tqdm(data_loader, leave=False):
                     # Make sure there is only 1 observation per row.
                     batch = batch.view(self.batch_size, -1)
-                    if cuda:
-                        batch = batch.cuda()
-                    elif mps:
-                        batch = batch.to(torch.float32).to(
-                            # float64 not suported with mps
-                            torch.device('mps'))
+                    batch = batch.to(torch.float32).to(
+                        # float64 not suported with mps
+                        torch.device(self.device))
 
                     # GET SUBSPACES AND ENCODING-DECODING
                     for p in detector.decoder.parameters():
@@ -267,8 +260,8 @@ class VGAN:
 
                     # OPTIMIZATION STEP DETECTOR
                     det_optimizer.zero_grad()
-                    batch_loss_D = minusone.to('mps')*(loss_function(batch_enc, projected_batch_enc, fake_subspaces) - .1 *
-                                                       L2_distance_batch - .1*L2_distance_projected_batch)  # Constrained MMD Loss
+                    batch_loss_D = minusone.to(self.device)*(loss_function(batch_enc, projected_batch_enc, fake_subspaces) - .1 *
+                                                             L2_distance_batch - .1*L2_distance_projected_batch)  # Constrained MMD Loss
                     self.bandwidth = loss_function.bandwidth
                     batch_loss_D.backward()
                     det_optimizer.step()
@@ -282,12 +275,8 @@ class VGAN:
                 for batch in tqdm(data_loader, leave=False):
                     # Make sure there is only 1 observation per row.
                     batch = batch.view(self.batch_size, -1)
-                    if cuda:
-                        batch = batch.cuda()
-                    elif mps:
-                        batch = batch.to(torch.float32).to(
-                            # float64 not suported with mps
-                            torch.device('mps'))
+
+                    batch = batch.to(torch.float32).to(self.device)
                     # GET SUBSPACES AND ENCODING-DECODING
                     batch_enc, batch_dec = detector(batch)
                     noise_tensor = Variable(noise_tensor.normal_())

@@ -102,7 +102,7 @@ class HiCS(BaseSubspaceSelector):
     # The timeout on HiCS has to be set this way since it comes from a NIM implementation, and one can't use python's signal alarms.
     # Outsourcing the exception call to a python's signal is still the prefered choice for implementing a timeout, rather than using
     # multiprocessing timeouts on single process.
-    @timeout(18000)
+    @timeout(36000)
     def __calculate_the_subspaces(self, X_train: np.ndarray, return_dict: list):
 
         # Nim has troubles dealing with the numpy array direclty, so we store it first as a csv for it to read it

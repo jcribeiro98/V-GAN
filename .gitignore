@@ -174,3 +174,4 @@ data/elki
 
 #Extra packages and repositories downloaded
 src/packages/
+src/modules/bin/
