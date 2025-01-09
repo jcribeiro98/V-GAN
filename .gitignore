@@ -171,3 +171,4 @@ data/datasets
 data/elki
 .DS_Store
 .vscode/
+src/modules/bin/
