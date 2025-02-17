@@ -23,6 +23,7 @@ from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
 
+# GMD refuses to not re-fit itself everitime, even after initializing it again. This patches the issue.
 GMD_class = GMD
 
 
@@ -88,7 +89,7 @@ class HiCS(BaseSubspaceSelector):
     """
 
     def __init__(self, numRuns=100,
-                 numCandidates=500, maxOutputSpaces=1000, alpha=0.1,
+                 numCandidates=500, maxOutputSpaces=500, alpha=0.1,
                  silent=False):
         super().__init__()
         # We need to load the data directly in Nim for this to work, we can not pass it as a numpy array.
@@ -141,7 +142,7 @@ class HiCS(BaseSubspaceSelector):
 
 class CLIQUE(BaseSubspaceSelector):
     """Class for the CLIQUE method
-    We select the subsapces where a cluster is fitted.
+    We select the subspaces where a cluster is fitted.
 
     Inherits:
         BaseSubspaceSelector
@@ -408,7 +409,7 @@ class UMAP(BaseSubspaceSelector):
         self.n_neighbors = n_neighbors
 
     def fit(self, X_train):
-        if self.n_components == None:
+        if self.n_components == None:  # Not used in the experiments
             component_array = [int(i) for i in np.linspace(
                 5, max(int(X_train.shape[1]), 7), 5)]
             component_array.sort()
@@ -436,7 +437,7 @@ class UMAP(BaseSubspaceSelector):
                     print(f"Best reconstruction error found")
                     break
         else:
-            dim_red = umap.UMAP(n_components=min([int(X_train.shape[1]), 100]),
+            dim_red = umap.UMAP(n_components=min([int(X_train.shape[1])/2, 100]),
                                 n_neighbors=self.n_neighbors, random_state=self.random_state, verbose=True, n_jobs=20)
 
             dim_red.fit(X_train)
