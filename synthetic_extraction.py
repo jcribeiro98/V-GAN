@@ -43,7 +43,7 @@ def launch_extraction_experiments(freq: int, base_estimators: list, epochs: int 
     proba_p2 = vgan.proba[[vgan.subspaces[i].tolist() in [[True, False, True], [
                           False, False, True], [False, True, True]] for i in range(vgan.subspaces.__len__())]].sum()
     proba_p1 = vgan.proba[[vgan.subspaces[i].tolist(
-    ) in [[True, True, False]] for i in range(vgan.subspaces.__len__())]].sum()
+    ) in [[True, True, False], [True, False, False], [False, True, False]] for i in range(vgan.subspaces.__len__())]].sum()
 
     return proba_p1, proba_p2
 
@@ -74,7 +74,7 @@ def launch_extraction_experiments_hics(freq: int, epochs: int = 3000,
     proba_p2 = hics.metric[[hics.subspaces[i].tolist() in [[True, False, True], [
         False, False, True], [False, True, True]] for i in range(hics.subspaces.__len__())]].sum()
     proba_p1 = hics.metric[[hics.subspaces[i].tolist(
-    ) in [[True, True, False]] for i in range(hics.subspaces.__len__())]].sum()
+    ) in [[True, True, False], [True, False, False], [False, True, False]] for i in range(hics.subspaces.__len__())]].sum()
 
     return proba_p1, proba_p2
 
@@ -103,9 +103,9 @@ def launch_extraction_experiments_gmd(freq: int, epochs: int = 3000,
     gmd.metric = gmd.metric/gmd.metric.sum()
     print(pd.DataFrame(gmd.subspaces, gmd.metric))
     proba_p2 = gmd.metric[[gmd.subspaces[i].tolist() in [[True, False, True], [
-        False, False, True], [False, True, True], [True, True, True]] for i in range(gmd.subspaces.__len__())]].sum()
+        False, False, True], [False, True, True]] for i in range(gmd.subspaces.__len__())]].sum()
     proba_p1 = gmd.metric[[gmd.subspaces[i].tolist(
-    ) in [[True, True, False]] for i in range(gmd.subspaces.__len__())]].sum()
+    ) in [[True, True, False], [True, False, False], [False, True, False]] for i in range(gmd.subspaces.__len__())]].sum()
 
     return proba_p1, proba_p2
 
@@ -119,8 +119,8 @@ if __name__ == "__main__":
     freq_vec = []
     for seed in [777, 1234, 12345, 000, 1000]:
         for i, freq in enumerate([0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1]):
-            proba_p1, proba_p2 = launch_extraction_experiments_gmd(
-                freq, seed=seed,   epochs=epochs[i])
+            proba_p1, proba_p2 = launch_extraction_experiments(
+                freq, seed=seed,  base_estimators=[], epochs=epochs[i])
 
             proba_p1_array.append(proba_p1)
             proba_p2_array.append(proba_p2)

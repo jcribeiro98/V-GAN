@@ -152,7 +152,7 @@ class VMMD:
             generator.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         self.generator_optimizer = optimizer.__class__.__name__
         # loss_function =  tts.MMDStatistic(self.batch_size, self.batch_size)
-        loss_function = MMDLossConstrained(weight=10)
+        loss_function = MMDLossConstrained(weight=0)
 
         for epoch in range(epochs):
             print(f'\rEpoch {epoch} of {epochs}')
@@ -196,7 +196,8 @@ class VMMD:
                 # batch_loss = loss_function(batch, fake_subspaces*batch + (fake_subspaces == 1e-08)*torch.mean(batch,dim=0), alphas=[0.1]) #Upper_lower_softmax
                 # batch_loss = loss_function(batch, fake_subspaces*batch + torch.less(batch,1/batch.shape[1])*torch.mean(batch,dim=0), alphas=[0.1]) #Upper softmax
                 batch_loss = loss_function(batch, fake_subspaces*batch + torch.less(
-                    batch, 1/batch.shape[1])*torch.mean(batch, dim=0), fake_subspaces)  # Constrained MMD Loss
+                    # Constrained MMD Loss
+                    batch, 1/batch.shape[1])*torch.mean(batch, dim=0), fake_subspaces)
                 self.bandwidth = loss_function.bandwidth
                 batch_loss.backward()
                 optimizer.step()
