@@ -25,7 +25,8 @@ class RBF(nn.Module):
 
 class MMDLossConstrained(nn.Module):
     '''
-    Constrained loss by the number of features selected
+    Constrained loss by the number of features selected. Used with weight = 0 in the experiments. Found better contrains for images and text
+    in later experiments with VGAN_vision and VGAN_text (see fork)
     '''
 
     def __init__(self, weight, kernel=RBF()):

@@ -1,24 +1,16 @@
-from src.modules.od_module import VGAN
 import numpy as np
-from pyod.models.ocsvm import OCSVM
 from pyod.models.ecod import ECOD
 from pyod.models.lof import LOF
 from pyod.models.knn import KNN
 from pyod.models.cblof import CBLOF
 from pyod.models.copod import COPOD
-from pyod.models.feature_bagging import FeatureBagging
 from pathlib import Path
-import datetime
 from sklearn.preprocessing import normalize
 import pandas as pd
 from sklearn.metrics import roc_auc_score as auc
 from sel_suod.models.base import sel_SUOD
-import itertools
 from src.modules.tools import numeric_to_boolean, aggregator_funct
-from sklearn.preprocessing import label_binarize
-from joblib.externals.loky import get_reusable_executor
 from data.get_datasets import load_data
-import json
 from pyod.utils.utility import generate_bagging_indices
 import random
 from sklearn.metrics import average_precision_score, f1_score
@@ -35,7 +27,7 @@ def pipeline_outlier_detection_vgan(datasets: list, outlier_detection_models: li
     """Pipeline for the outlier detection experiments
 
     This function will run the outlier detection experiments in a collection of datasets and for a group of outlier detection models.
-    Additionally, the funcition is capable of, given the existence of a version of VGAN/VMMD, load it and use it for its own porpuse
+    Additionally, the funcition is capable of, given the existence of a version of VGAN, load it and use it for its own porpuse
 
     Args:
         datasets (list): list of datasets to run the experiments in
@@ -62,7 +54,7 @@ def pipeline_outlier_detection_vgan(datasets: list, outlier_detection_models: li
                         results_dict = launch_outlier_detection_experiments(
                             dataset_name=dataset, base_estimators=[
                                 clone(base_method)],
-                            epochs=2000, temperature=10, seed=seed, gen_model_to_use=gen_model_to_use)
+                            epochs=2000, temperature=0, seed=seed, gen_model_to_use=gen_model_to_use)
                     results_dict["Method"] = base_method.__class__.__name__
                     results_df = results_df._append(
                         results_dict, ignore_index=True)
@@ -81,7 +73,7 @@ def pipeline_outlier_detection_classic_od(datasets: list, outlier_detection_mode
     """Pipeline for the outlier detection experiments
 
     This function will run the outlier detection experiments in a collection of datasets and for a group of outlier detection models.
-    Additionally, the funcition is capable of, given the existence of a version of VGAN/VMMD, load it and use it for its own porpuse
+    Additionally, the funcition is capable of, given the existence of a version of VGAN, load it and use it for its own porpuse
 
     Args:
         datasets (list): list of datasets to run the experiments in
@@ -127,7 +119,7 @@ def pipeline_outlier_detection_ens_od(datasets: list, outlier_detection_models: 
     """Pipeline for the outlier detection experiments
 
     This function will run the outlier detection experiments in a collection of datasets and for a group of outlier detection models.
-    Additionally, the funcition is capable of, given the existence of a version of VGAN/VMMD, load it and use it for its own porpuse
+    Additionally, the funcition is capable of, given the existence of a version of VGAN, load it and use it for its own porpuse
 
     Args:
         datasets (list): list of datasets to run the experiments in
@@ -245,28 +237,34 @@ if __name__ == "__main__":
                 "vertebral",
                 "Wilt"]
 
-    # pipeline_outlier_detection_vgan( datasets, base_methods=[CBLOF()], gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_vgan(datasets, base_methods=[ECOD()], gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_vgan(datasets, base_methods=[COPOD()], gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_vgan(datasets, base_methods=[KNN()], gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_vgan(datasets, base_methods=[LOF()], gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_vgan(
-    #    datasets, base_methods=[CBLOF()], gen_model_to_use="VMMD")
-    # pipeline_outlier_detection_vgan(
-    #    datasets, base_methods=[ECOD()], gen_model_to_use="VMMD")
-    # pipeline_outlier_detection_vgan(
-    #    datasets, base_methods=[COPOD()], gen_model_to_use="VMMD")
-    # pipeline_outlier_detection_vgan(
-    #    datasets, base_methods=[KNN()], gen_model_to_use="VMMD")
-    # pipeline_outlier_detection_vgan(datasets, base_methods=[LOF()], gen_model_to_use="VMMD")
-    # pipeline_gof_test(datasets=datasets, gen_model_to_use="VMMD")
-    # pipeline_gof_test(datasets=datasets, gen_model_to_use="VGAN")
-    # pipeline_outlier_detection_classic_od(datasets, base_methods=[ECOD()])
-    # pipeline_outlier_detection_classic_od(datasets, base_methods=[COPOD()])
-    # pipeline_outlier_detection_classic_od(datasets, base_methods=[CBLOF()])
-    # pipeline_outlier_detection_ens_od(datasets, base_methods={LOF()})
-    # pipeline_outlier_detection_ens_od(datasets, base_methods={CBLOF()})
-    # pipeline_outlier_detection_ens_od(datasets, base_methods={ECOD()})
+    pipeline_outlier_detection_vgan(
+        datasets, base_methods=[CBLOF()], gen_model_to_use="VGAN")
+    pipeline_outlier_detection_vgan(
+        datasets, base_methods=[ECOD()], gen_model_to_use="VGAN")
+    pipeline_outlier_detection_vgan(
+        datasets, base_methods=[COPOD()], gen_model_to_use="VGAN")
+    pipeline_outlier_detection_vgan(
+        datasets, base_methods=[KNN()], gen_model_to_use="VGAN")
+    pipeline_outlier_detection_vgan(
+        datasets, base_methods=[LOF()], gen_model_to_use="VGAN")
+    pipeline_outlier_detection_vgan(
+        datasets, base_methods=[CBLOF()], gen_model_to_use="VGAN_no_kl")
+    pipeline_outlier_detection_vgan(
+        datasets, base_methods=[ECOD()], gen_model_to_use="VGAN_no_kl")
+    pipeline_outlier_detection_vgan(
+        datasets, base_methods=[COPOD()], gen_model_to_use="VGAN_no_kl")
+    pipeline_outlier_detection_vgan(
+        datasets, base_methods=[KNN()], gen_model_to_use="VGAN_no_kl")
+    pipeline_outlier_detection_vgan(
+        datasets, base_methods=[LOF()], gen_model_to_use="VGAN_no_kl")
+    pipeline_gof_test(datasets=datasets, gen_model_to_use="VGAN_no_kl")
+    pipeline_gof_test(datasets=datasets, gen_model_to_use="VGAN")
+    pipeline_outlier_detection_classic_od(datasets, base_methods=[ECOD()])
+    pipeline_outlier_detection_classic_od(datasets, base_methods=[COPOD()])
+    pipeline_outlier_detection_classic_od(datasets, base_methods=[CBLOF()])
+    pipeline_outlier_detection_ens_od(datasets, base_methods={LOF()})
+    pipeline_outlier_detection_ens_od(datasets, base_methods={CBLOF()})
+    pipeline_outlier_detection_ens_od(datasets, base_methods={ECOD()})
     for num in np.linspace(50, 500, 5, dtype=int):
         pipeline_outlier_detection_ens_od(
             datasets, base_methods={COPOD()}, num_members=num)

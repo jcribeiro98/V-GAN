@@ -1,22 +1,11 @@
-from src.modules.od_module import VGAN, VMMD
+from src.modules.od_module import VGAN, VGAN_no_kl
 import numpy as np
-from pyod.models.ocsvm import OCSVM
-from pyod.models.ecod import ECOD
 from pyod.models.lof import LOF
-from pyod.models.feature_bagging import FeatureBagging
 from pathlib import Path
-import datetime
-from sklearn.preprocessing import normalize
-import pandas as pd
 from sklearn.metrics import roc_auc_score as auc
 from sklearn.metrics import average_precision_score, f1_score
 from sel_suod.models.base import sel_SUOD
-import itertools
-from sklearn.preprocessing import label_binarize
-from joblib.externals.loky import get_reusable_executor
 from data.get_datasets import load_data
-import json
-import os
 import logging
 from src.modules.tools import aggregator_funct
 logger = logging.getLogger(__name__)
@@ -43,10 +32,10 @@ def launch_outlier_detection_experiments(dataset_name: str, base_estimators: lis
                     path_to_directory=Path() / "experiments" / "VGAN"
                     f"VGAN_{dataset_name}",
                     iternum_d=1, iternum_g=5, lr_G=0.01, lr_D=0.01)
-    elif gen_model_to_use == "VMMD":
-        vgan = VMMD(epochs=epochs,  batch_size=500,
-                    path_to_directory=Path() / "experiments" / "VMMD" /
-                    f"VMMD_{dataset_name}", lr=0.01)
+    elif gen_model_to_use == "VGAN_no_kl":
+        vgan = VGAN_no_kl(epochs=epochs,  batch_size=500,
+                          path_to_directory=Path() / "experiments" / "VMMD" /
+                          f"VMMD_{dataset_name}", lr=0.01)
     else:
         raise ValueError(f"{gen_model_to_use} is not a generator in the list")
 
@@ -86,9 +75,9 @@ def pretrained_launch_outlier_detection_experiments(dataset_name: str, base_esti
         vgan = VGAN()
         vgan.load_models(Path() / "experiments" / "VGAN" /
                          f"VGAN_{dataset_name}" / "models" / "generator_0.pt", ndims=X_train.shape[1])
-    elif gen_model_to_use == "VMMD":
-        logger.debug("Loading VMMD")
-        vgan = VMMD()
+    elif gen_model_to_use == "VGAN_no_kl":
+        logger.debug("Loading VGAN_no_kl")
+        vgan = VGAN_no_kl()
         vgan.load_models(Path() / "experiments" / "VMMD" /
                          f"VMMD_{dataset_name}" / "models" / "generator_0.pt", ndims=X_train.shape[1])
     vgan.seed = seed
@@ -124,8 +113,8 @@ def check_if_myopicity_was_uphold(dataset_name: str, gen_model_to_use="VGAN") ->
         vgan = VGAN()
         vgan.load_models(Path() / "experiments" / "VGAN" /
                          f"VGAN_{dataset_name}" / "models" / "generator_0.pt", ndims=X_train.shape[1])
-    elif gen_model_to_use == "VMMD":
-        vgan = VMMD()
+    elif gen_model_to_use == "VGAN_no_kl":
+        vgan = VGAN_no_kl()
         vgan.load_models(Path() / "experiments" / "VMMD" /
                          f"VMMD_{dataset_name}" / "models" / "generator_0.pt", ndims=X_train.shape[1])
     vgan.approx_subspace_dist()
@@ -139,6 +128,6 @@ if __name__ == "__main__":
     dataset_name = "Ionosphere"
 
     auc_vgan_ens = pretrained_launch_outlier_detection_experiments(dataset_name, [
-        LOF()], gen_model_to_use="VMMD")  # ,   epochs=3000, temperature=1)
+        LOF()], gen_model_to_use="VGAN_no_kl")
     print(
         f'AUC obtained by the VGAN-based ensemble model: {print(auc_vgan_ens)}')
