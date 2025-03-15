@@ -1,7 +1,6 @@
 from sel_suod.models.base import sel_SUOD
 import numpy as np
-from src.vgan import VGAN
-from src.vmmd import VMMD
+from src.vgan import VGAN, VGAN_no_kl
 from ..models.Detector import Detector, Encoder, Decoder
 from ..models.Generator import Generator_big, Generator
 import torch_two_sample as tts
@@ -36,7 +35,9 @@ class VGAN(VGAN):
         self.proba = proba/proba.sum()
 
     def check_if_myopic(self,  x_data: np.array, bandwidth: Union[float, np.array] = 0.01, count=500) -> pd.DataFrame:
-        """_summary_
+        """Two sample test for myopicity
+
+        Launches the two sample test presented in the paper for checking the myopicity.
 
         Args:
             x_data (np.array): Data to check the myopicity of.
@@ -83,7 +84,7 @@ class VGAN(VGAN):
         return pd.DataFrame([results], columns=bandwidth, index=["p-val"])
 
 
-class VMMD(VMMD):
+class VGAN_no_kl(VGAN_no_kl):
     def get_the_networks(self, ndims, latent_size, device=None):
         if device == None:
             device = self.device
@@ -105,7 +106,9 @@ class VMMD(VMMD):
         self.proba = proba/proba.sum()
 
     def check_if_myopic(self,  x_data: np.array, bandwidth: Union[float, np.array] = 0.01, count=500) -> pd.DataFrame:
-        """_summary_
+        """Two sample test for myopicity
+
+        Launches the two sample test presented in the paper for checking the myopicity.
 
         Args:
             x_data (np.array): Data to check the myopicity of.

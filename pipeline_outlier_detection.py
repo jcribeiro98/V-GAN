@@ -1,29 +1,18 @@
-from src.modules.od_module import VGAN
 import numpy as np
-from pyod.models.ocsvm import OCSVM
 from pyod.models.ecod import ECOD
 from pyod.models.lof import LOF
 from pyod.models.knn import KNN
 from pyod.models.cblof import CBLOF
 from pyod.models.copod import COPOD
-from pyod.models.feature_bagging import FeatureBagging
 from pathlib import Path
-import datetime
-from sklearn.preprocessing import normalize
 import pandas as pd
 from sklearn.metrics import roc_auc_score as auc
 from sel_suod.models.base import sel_SUOD
-import itertools
-from src.modules.tools import numeric_to_boolean, aggregator_funct
-from sklearn.preprocessing import label_binarize
-from joblib.externals.loky import get_reusable_executor
+from src.modules.tools import aggregator_funct
 from data.get_datasets import load_data
-import json
-from pyod.utils.utility import generate_bagging_indices
 import random
 from sklearn.metrics import average_precision_score, f1_score
 import os
-from outlier_detection import launch_outlier_detection_experiments, pretrained_launch_outlier_detection_experiments, check_if_myopicity_was_uphold
 import logging
 from colorama import Fore
 from sklearn.base import clone
@@ -314,18 +303,18 @@ if __name__ == "__main__":
                 "Wilt"]
 
 for base_method in [LOF(), KNN(), CBLOF(), ECOD(), COPOD()]:
-    # pipeline_outlier_detection_ens_od(
-    #    datasets, base_methods=[base_method], base_subspace_selector=ss.HiCS())
-    # pipeline_outlier_detection_ens_od(
-    #    datasets, base_methods=[base_method], base_subspace_selector=ss.GMD())
-    # pipeline_outlier_detection_ens_od(
-    #    datasets, base_methods=[
+    pipeline_outlier_detection_ens_od(
+        datasets, base_methods=[base_method], base_subspace_selector=ss.HiCS())
+    pipeline_outlier_detection_ens_od(
+        datasets, base_methods=[base_method], base_subspace_selector=ss.GMD())
+    # pipeline_outlier_detection_ens_od(    #CAE is written in TF, while all the other networks use Pytorch. When launching CAE remember to uncomment the calls
+    #    datasets, base_methods=[          #in the ss_module.py file and to change to a tensroflow environment.
     #        base_method], base_subspace_selector=ss.CAE()
     # )
-    # pipeline_outlier_detection_ens_od(
-    #    datasets, base_methods=[base_method], base_subspace_selector=ss.CLIQUE())
-    # pipeline_outlier_detection_ELM_od(datasets, base_methods=[base_method])
+    pipeline_outlier_detection_ens_od(
+        datasets, base_methods=[base_method], base_subspace_selector=ss.CLIQUE())
+    pipeline_outlier_detection_ELM_od(datasets, base_methods=[base_method])
     pipeline_outlier_detection_dimred_od(
         datasets, base_subspace_selector=ss.PCA(), base_methods=[base_method])
-    # pipeline_outlier_detection_dimred_od(
-    #    datasets, base_subspace_selector=ss.UMAP(n_components=-1), base_methods=[base_method])
+    pipeline_outlier_detection_dimred_od(
+        datasets, base_subspace_selector=ss.UMAP(n_components=-1), base_methods=[base_method])
