@@ -1,7 +1,6 @@
 from sel_suod.models.base import sel_SUOD
 import numpy as np
-from src.vgan import VGAN
-from src.vmmd import VMMD
+from src.vgan import VGAN, VGAN_no_kl
 from ..models.Detector import Detector, Encoder, Decoder
 from ..models.Generator import Generator_big, Generator
 import torch_two_sample as tts
@@ -83,7 +82,7 @@ class VGAN(VGAN):
         return pd.DataFrame([results], columns=bandwidth, index=["p-val"])
 
 
-class VMMD(VMMD):
+class VGAN_no_kl(VGAN_no_kl):
     def get_the_networks(self, ndims, latent_size, device=None):
         if device == None:
             device = self.device
