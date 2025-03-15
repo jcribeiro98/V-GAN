@@ -1,4 +1,4 @@
-from src.modules.od_module import VGAN, VMMD
+from src.modules.od_module import VGAN, VGAN_no_kl
 import numpy as np
 from pathlib import Path
 import pandas as pd
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def launch_extraction_experiments(freq: int, base_estimators: list, epochs: int = 3000,
-                                  temperature: float = 0, seed: int = 777, gen_model_to_use: str = "VMMD") -> dict:
+                                  temperature: float = 0, seed: int = 777, gen_model_to_use: str = "VGAN_no_kl") -> dict:
     """Launch the outlier detection experiments for a given dataset
 
     Args:
@@ -29,10 +29,10 @@ def launch_extraction_experiments(freq: int, base_estimators: list, epochs: int 
                     path_to_directory=Path() / "experiments" / "Synthetic" / "VGAN" /
                     f"VGAN_{freq}",
                     iternum_d=1, iternum_g=5, lr_G=0.01, lr_D=0.01)
-    elif gen_model_to_use == "VMMD":
-        vgan = VMMD(epochs=epochs,  batch_size=6000,
-                    path_to_directory=Path() / "experiments" / "Synthetic" / "VMMD" /
-                    f"VMMD_{freq}", lr=0.01)
+    elif gen_model_to_use == "VGAN_no_kl":
+        vgan = VGAN_no_kl(epochs=epochs,  batch_size=6000,
+                          path_to_directory=Path() / "experiments" / "Synthetic" / "VMMD" /
+                          f"VMMD_{freq}", lr=0.01)
     else:
         raise ValueError(f"{gen_model_to_use} is not a generator in the list")
 
