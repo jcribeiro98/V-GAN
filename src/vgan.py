@@ -209,12 +209,13 @@ class VGAN:
             detector.parameters(), lr=self.lr_D, weight_decay=self.weight_decay)
         self.generator_optimizer = gen_optimizer.__class__.__name__
         self.detector_optimizer = det_optimizer.__class__.__name__
+        # loss_function =  tts.MMDStatistic(self.batch_size, self.batch_size)
         loss_function = MMDLossConstrained(weight=self.temperature)
 
         # OPTIMIZATION STUFF
-        one = torch.Tensor([1])
+        one = torch.Tensor([1]).to(self.device)
         minusone = one * -1
-
+        minusone = minusone.to(device)
         # DATA LOADER#
         if cuda:
             data_loader = DataLoader(
@@ -252,6 +253,8 @@ class VGAN:
                     # Make sure there is only 1 observation per row.
                     batch = batch.view(self.batch_size, -1)
                     if cuda:
+                        # I have no idea why it stopped working in float64 all of a suden >:/
+                        batch = batch.to(torch.float32)
                         batch = batch.cuda()
                     elif mps:
                         batch = batch.to(torch.float32).to(
@@ -276,8 +279,8 @@ class VGAN:
 
                     # OPTIMIZATION STEP DETECTOR
                     det_optimizer.zero_grad()
-                    batch_loss_D = minusone.to('mps')*(loss_function(batch_enc, projected_batch_enc, fake_subspaces) - .1 *
-                                                       L2_distance_batch - .1*L2_distance_projected_batch)  # Constrained MMD Loss
+                    batch_loss_D = minusone*(loss_function(batch_enc, projected_batch_enc, fake_subspaces) - .1 *
+                                             L2_distance_batch - .1*L2_distance_projected_batch)  # Constrained MMD Loss
                     self.bandwidth = loss_function.bandwidth
                     batch_loss_D.backward()
                     det_optimizer.step()
@@ -293,6 +296,7 @@ class VGAN:
                     batch = batch.view(self.batch_size, -1)
                     if cuda:
                         batch = batch.cuda()
+                        batch = batch.to(torch.float32)
                     elif mps:
                         batch = batch.to(torch.float32).to(
                             # float64 not suported with mps
@@ -406,8 +410,6 @@ class VGAN_no_kl:
             print("The show option has been depricated due to lack of utility")
 
     def get_params(self) -> dict:
-        """Gets a dictionary with the parameters of used in the network
-        """
         return {'batch size': self.batch_size, 'epochs': self.epochs, 'lr_g': self.lr,
                 'momentum': self.momentum, 'weight decay': self.weight_decay,
                 'batch_size': self.batch_size, 'seed': self.seed,
@@ -480,12 +482,6 @@ class VGAN_no_kl:
         return generator
 
     def fit(self, X):
-        """Fit function for the network 
-
-        Fits the Network with the given dataset X. 
-        Args:
-            - X: dataset to fit the network with 
-        """
 
         cuda = torch.cuda.is_available()
         mps = torch.backends.mps.is_available()
@@ -510,7 +506,7 @@ class VGAN_no_kl:
             generator.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         self.generator_optimizer = optimizer.__class__.__name__
         # loss_function =  tts.MMDStatistic(self.batch_size, self.batch_size)
-        loss_function = MMDLossConstrained(weight=0)
+        loss_function = MMDLossConstrained(weight=10)
 
         for epoch in range(epochs):
             print(f'\rEpoch {epoch} of {epochs}')
@@ -540,7 +536,10 @@ class VGAN_no_kl:
                 # Make sure there is only 1 observation per row.
                 batch = batch.view(self.batch_size, -1)
                 if cuda:
+                    # It stopped working for some f****** reason
+                    batch = batch.to(torch.float32)
                     batch = batch.cuda()
+
                 elif mps:
                     batch = batch.to(torch.float32).to(
                         torch.device('mps'))  # float64 not suported with mps
@@ -577,14 +576,6 @@ class VGAN_no_kl:
         self.generator = generator
 
     def generate_subspaces(self, nsubs):
-        """Generates subspaces
-
-        Calls for nsubs foward passes of the network.
-        Args:
-            - nsubs: number of subspaces to generate
-        Return:
-            - u: Tensor of subspaces (in cpu)
-        """
         # Need to load in cpu as mps Tensor module doesn't properly fix the seed
         noise_tensor = torch.Tensor(nsubs, self.__latent_size).to('cpu')
         if not self.seed == None:
@@ -593,3 +584,42 @@ class VGAN_no_kl:
         u = self.generator(noise_tensor.to(self.device))
         u = torch.greater_equal(u, 1/u.shape[1])
         return u
+
+
+if __name__ == "__main__":
+    # mean = [1,1,0,0,0,0,0,0,2,1]
+    # cov = [[1,1,0,0,0,0,0,0,0,0],[1,1,0,0,0,0,0,0,0,0],[0,0,1,1,1,0,0,0,0,0],[0,0,1,1,1,0,0,0,0,0],[0,0,1,1,1,0,0,0,0,0],[0,0,0,0,0,1,0,0,0,0],[0,0,0,0,0,0,1,0,0,0],
+    #       [0,0,0,0,0,0,0,1,0,0],[0,0,0,0,0,0,0,0,1,0],[0,0,0,0,0,0,0,0,0,1]]
+    mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    cov = [[1, 0, 0, 0, 0, 0, 0, 0, 500, 500], [0, 1, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+           [0, 0, 0, 0, 0, 0, 0, 1, 0, 0], [500, 0, 0, 0, 0, 0, 0, 0, 1, 500], [500, 0, 0, 0, 0, 0, 0, 0, 500, 1]]
+    X_data = np.random.multivariate_normal(mean, cov, 2000)
+
+    model = VGAN(epochs=15, temperature=1, path_to_directory=Path() / "experiments" /
+                 f"Example_normal_{datetime.datetime.now()}_vgan", lr_G=0.01, lr_D=0.1)
+    model.fit(X_data)
+
+    X_sample = torch.mps.Tensor(pd.DataFrame(
+        X_data).sample(500).to_numpy()).to('mps:0')
+    u = model.generate_subspaces(500)
+    uX_data = model.detector.encoder(
+        u * torch.mps.Tensor(X_sample).to(model.device) + torch.mean(X_sample, dim=0)*(~u))
+    X_sample = model.detector.encoder(X_sample)
+    mmd = tts.MMDStatistic(500, 500)
+    mmd_val, distances = mmd(X_sample, uX_data, alphas=[0.01], ret_matrix=True)
+    mmd_prop = tts.MMDStatistic(500, 500)
+    mmd_prop_val, distances_prop = mmd_prop(
+        X_sample, uX_data, alphas=[1/model.bandwidth], ret_matrix=True)
+    PYDEVD_WARN_EVALUATION_TIMEOUT = 200
+    print(
+        f'pval of the MMD two sample test {mmd.pval(distances)}, with MMD {mmd_val}')
+    print(
+        f'pval of the MMD two sample test with proposed bandwidth {1/model.bandwidth} is {mmd_prop.pval(distances_prop)}, with MMD {mmd_prop_val}')
+    unique_subspaces, proba = np.unique(
+        np.array(u.to('cpu')), axis=0, return_counts=True)
+    proba = proba/np.array(u.to('cpu')).shape[0]
+    unique_subspaces = [str(unique_subspaces[i]*1)
+                        for i in range(unique_subspaces.shape[0])]
+
+    print(pd.DataFrame({'subspace': unique_subspaces, 'probability': proba}))
+    print(np.sum(proba))
