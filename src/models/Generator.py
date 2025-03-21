@@ -2,8 +2,16 @@ import torch
 from torch import nn
 
 
-# Regular function definition does not appear to work properly within a Sequential definition of a network in Pytorchs
+# Regular function definition does not appear to work properly within a Sequential definition of a network in Pytorch
 class upper_softmax(nn.Module):
+    """ Upper softmax activation
+
+    Upper softmax layer as defined in the paper. In practical terms, we want to avoid having 0's in 
+    the unselected subspaces to avoid possible computation problems. In this version, 
+    the outputs of the unselected variables for the softmax are left as-is, as in HD data
+    1/dimensions is close enough to 0. 
+    """
+
     def __init__(self):
         super().__init__()  # Dummy intialization as there is no parameter to learn
 
@@ -15,6 +23,13 @@ class upper_softmax(nn.Module):
 
 
 class upper_lower_softmax(nn.Module):
+    """ Upper softmax activation
+
+    Upper softmax layer as defined in the paper. In practical terms, we want to avoid having 0's in 
+    the unselected subspaces to avoid possible computation problems. In this version, we added a 
+    close to 0 value in the un-selected subsapces to avoid having 0 in the gradient computations
+    """
+
     def __init__(self):
         super().__init__()  # Dummy intialization as there is no parameter to learn
 
