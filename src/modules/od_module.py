@@ -83,13 +83,6 @@ class VGAN(VGAN):
 
 
 class VGAN_no_kl(VGAN_no_kl):
-    def get_the_networks(self, ndims, latent_size, device=None):
-        if device == None:
-            device = self.device
-        generator = Generator_big(
-            img_size=ndims, latent_size=latent_size).to(device)
-        detector = Detector(latent_size, ndims, Encoder, Decoder).to(device)
-        return generator, detector
 
     def approx_subspace_dist(self, subspace_count=500, add_leftover_features=False):
         u = self.generate_subspaces(subspace_count)
