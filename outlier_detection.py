@@ -29,13 +29,14 @@ def launch_outlier_detection_experiments(dataset_name: str, base_estimators: lis
 
     if gen_model_to_use == "VGAN":
         vgan = VGAN(epochs=epochs, temperature=temperature, batch_size=500,
-                    path_to_directory=Path() / "experiments" / "VGAN"
-                    f"VGAN_{dataset_name}",
+                    # path_to_directory=Path() / "experiments" / "VGAN"
+                    # f"VGAN_{dataset_name}",
                     iternum_d=1, iternum_g=5, lr_G=0.01, lr_D=0.01)
     elif gen_model_to_use == "VGAN_no_kl":
         vgan = VGAN_no_kl(epochs=epochs,  batch_size=500,
-                          path_to_directory=Path() / "experiments" / "VMMD" /
-                          f"VMMD_{dataset_name}", lr=0.01)
+                          # path_to_directory=Path() / "experiments" / "VMMD" /
+                          # f"VMMD_{dataset_name}",
+                          lr=0.01)
     else:
         raise ValueError(f"{gen_model_to_use} is not a generator in the list")
 
@@ -127,7 +128,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     dataset_name = "Ionosphere"
 
-    auc_vgan_ens = pretrained_launch_outlier_detection_experiments(dataset_name, [
+    auc_vgan_ens = launch_outlier_detection_experiments(dataset_name, [
         LOF()], gen_model_to_use="VGAN_no_kl")
     print(
         f'AUC obtained by the VGAN-based ensemble model: {print(auc_vgan_ens)}')

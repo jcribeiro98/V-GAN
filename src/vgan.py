@@ -214,9 +214,9 @@ class VGAN:
         loss_function = MMDLossConstrained(weight=self.temperature)
 
         # OPTIMIZATION STUFF
-        one = torch.mps.Tensor([1])
+        one = torch.Tensor([1]).to(self.device)
         minusone = one * -1
-
+        minusone = minusone.to(device)
         # DATA LOADER#
         if cuda:
             data_loader = DataLoader(
@@ -254,6 +254,8 @@ class VGAN:
                     # Make sure there is only 1 observation per row.
                     batch = batch.view(self.batch_size, -1)
                     if cuda:
+                        # I have no idea why it stopped working in float64 all of a suden >:/
+                        batch = batch.to(torch.float32)
                         batch = batch.cuda()
                     elif mps:
                         batch = batch.to(torch.float32).to(
@@ -278,8 +280,8 @@ class VGAN:
 
                     # OPTIMIZATION STEP DETECTOR
                     det_optimizer.zero_grad()
-                    batch_loss_D = minusone.to('mps')*(loss_function(batch_enc, projected_batch_enc, fake_subspaces) - .1 *
-                                                       L2_distance_batch - .1*L2_distance_projected_batch)  # Constrained MMD Loss
+                    batch_loss_D = minusone*(loss_function(batch_enc, projected_batch_enc, fake_subspaces) - .1 *
+                                             L2_distance_batch - .1*L2_distance_projected_batch)  # Constrained MMD Loss
                     self.bandwidth = loss_function.bandwidth
                     batch_loss_D.backward()
                     det_optimizer.step()
@@ -295,6 +297,7 @@ class VGAN:
                     batch = batch.view(self.batch_size, -1)
                     if cuda:
                         batch = batch.cuda()
+                        batch = batch.to(torch.float32)
                     elif mps:
                         batch = batch.to(torch.float32).to(
                             # float64 not suported with mps
@@ -534,7 +537,10 @@ class VGAN_no_kl:
                 # Make sure there is only 1 observation per row.
                 batch = batch.view(self.batch_size, -1)
                 if cuda:
+                    # It stopped working for some f****** reason
+                    batch = batch.to(torch.float32)
                     batch = batch.cuda()
+
                 elif mps:
                     batch = batch.to(torch.float32).to(
                         torch.device('mps'))  # float64 not suported with mps
