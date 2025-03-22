@@ -12,7 +12,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import os
 import operator
-import datetime
+from sklearn.preprocessing import normalize
+from typing import Union
 from torch.autograd import Variable
 
 
@@ -271,11 +272,11 @@ class VGAN:
                             # Freeze G
                             generator(noise_tensor).clone().detach())
                     projected_batch_enc, projected_batch_dec = detector(
-                        fake_subspaces*batch + torch.less(batch, 1/batch.shape[1])*torch.mean(batch, dim=0))
+                        fake_subspaces*batch)
                     L2_distance_batch = self.__distance(
                         batch.view(self.batch_size, -1), batch_dec, 'L2')
-                    L2_distance_projected_batch = self.__distance((fake_subspaces*batch + torch.less(
-                        batch, 1/batch.shape[1])*torch.mean(batch, dim=0)).view(self.batch_size, -1), projected_batch_dec, 'L2')
+                    L2_distance_projected_batch = self.__distance(
+                        (fake_subspaces*batch).view(self.batch_size, -1), projected_batch_dec, 'L2')
 
                     # OPTIMIZATION STEP DETECTOR
                     det_optimizer.zero_grad()
@@ -308,11 +309,11 @@ class VGAN:
                         generator(noise_tensor))  # Unfreeze G
                     fake_subspaces.requires_grad = True
                     projected_batch_enc, projected_batch_dec = detector(
-                        fake_subspaces*batch + torch.less(batch, 1/batch.shape[1])*torch.mean(batch, dim=0))
+                        fake_subspaces*batch)
                     L2_distance_batch = self.__distance(
                         batch.view(self.batch_size, -1), batch_dec, 'L2')
-                    L2_distance_projected_batch = self.__distance((fake_subspaces*batch + torch.less(
-                        batch, 1/batch.shape[1])*torch.mean(batch, dim=0)).view(self.batch_size, -1), projected_batch_dec, 'L2')
+                    L2_distance_projected_batch = self.__distance(
+                        (fake_subspaces*batch).view(self.batch_size, -1), projected_batch_dec, 'L2')
 
                     # OPTIMIZATION STEP GENERATOR
                     for p in detector.parameters():
@@ -367,6 +368,67 @@ class VGAN:
         u = self.generator(noise_tensor.to(self.device))
         u = torch.greater_equal(u, 1/u.shape[1])
         return u
+
+    def approx_subspace_dist(self, subspace_count=500, add_leftover_features=False):
+        u = self.generate_subspaces(subspace_count)
+        unique_subspaces, proba = np.unique(
+            np.array(u.to('cpu')), axis=0, return_counts=True)
+        if (unique_subspaces.sum(axis=0) < 1).sum() != 0 and add_leftover_features:
+            unique_subspaces = np.append(
+                unique_subspaces, [unique_subspaces.sum(axis=0) < 1], axis=0)
+            proba = np.append(proba/proba.sum(), 1)
+
+        self.subspaces = unique_subspaces
+        self.proba = proba/proba.sum()
+
+    def check_if_myopic(self,  x_data: np.array, bandwidth: Union[float, np.array] = 0.01, count=500) -> pd.DataFrame:
+        """Two sample test for myopicity
+
+        Launches the two sample test presented in the paper for checking the myopicity.
+
+        Args:
+            x_data (np.array): Data to check the myopicity of.
+            bandwidth (float | np.array, optional): Bandwidth used in the GOF tests using the MMD. This method always runs
+            the recommended bandwidth alongside this optional one. Defaults to 0.01.
+            count (int, optional): Number of samples used to approximate the MMD. Defaults to 500.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the p.value of the test with all the different bandwidths.
+        """
+        assert count <= x_data.shape[0], "Selected 'count' is greater than the number of samples in the dataset"
+        results = []
+
+        x_data = normalize(x_data, axis=0)
+        x_sample = torch.Tensor(pd.DataFrame(
+            x_data).sample(count).to_numpy()).to(self.device)
+        u_subspaces = self.generate_subspaces(count)
+        ux_sample = u_subspaces * \
+            torch.Tensor(x_sample).to(self.device) + \
+            torch.mean(x_sample, dim=0)*(~u_subspaces)
+        if type(bandwidth) == float:
+            bandwidth = [bandwidth]
+
+        if not hasattr(self, 'bandwidth'):
+            mmd_loss = MMDLossConstrained(0)
+            mmd_loss.forward(
+                x_sample, ux_sample, u_subspaces*1)
+            self.bandwidth = mmd_loss.bandwidth
+
+        bandwidth.sort()
+        for bw in bandwidth:
+            mmd = tts.MMDStatistic(count, count)
+            _, distances = mmd(x_sample, ux_sample, alphas=[
+                bw], ret_matrix=True)
+            results.append(mmd.pval(distances))
+
+        bw = self.bandwidth.item()
+        mmd = tts.MMDStatistic(count, count)
+        _, distances = mmd(x_sample, ux_sample, alphas=[
+            bw], ret_matrix=True)
+        results.append(mmd.pval(distances))
+
+        bandwidth.append("recommended bandwidth")
+        return pd.DataFrame([results], columns=bandwidth, index=["p-val"])
 
 
 class VGAN_no_kl:
@@ -550,9 +612,8 @@ class VGAN_no_kl:
                 # OPTIMIZATION STEP#
                 optimizer.zero_grad()
                 fake_subspaces = generator(noise_tensor)
-                batch_loss = loss_function(batch, fake_subspaces*batch + torch.less(
-                    # Constrained MMD Loss
-                    batch, 1/batch.shape[1])*torch.mean(batch, dim=0), fake_subspaces)
+                batch_loss = loss_function(
+                    batch, fake_subspaces*batch, fake_subspaces)
                 self.bandwidth = loss_function.bandwidth
                 batch_loss.backward()
                 optimizer.step()
@@ -585,41 +646,63 @@ class VGAN_no_kl:
         u = torch.greater_equal(u, 1/u.shape[1])
         return u
 
+    def approx_subspace_dist(self, subspace_count=500, add_leftover_features=False):
+        u = self.generate_subspaces(subspace_count)
+        unique_subspaces, proba = np.unique(
+            np.array(u.to('cpu')), axis=0, return_counts=True)
+        if (unique_subspaces.sum(axis=0) < 1).sum() != 0 and add_leftover_features:
+            unique_subspaces = np.append(
+                unique_subspaces, [unique_subspaces.sum(axis=0) < 1], axis=0)
+            proba = np.append(proba/proba.sum(), 1)
 
-if __name__ == "__main__":
-    # mean = [1,1,0,0,0,0,0,0,2,1]
-    # cov = [[1,1,0,0,0,0,0,0,0,0],[1,1,0,0,0,0,0,0,0,0],[0,0,1,1,1,0,0,0,0,0],[0,0,1,1,1,0,0,0,0,0],[0,0,1,1,1,0,0,0,0,0],[0,0,0,0,0,1,0,0,0,0],[0,0,0,0,0,0,1,0,0,0],
-    #       [0,0,0,0,0,0,0,1,0,0],[0,0,0,0,0,0,0,0,1,0],[0,0,0,0,0,0,0,0,0,1]]
-    mean = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    cov = [[1, 0, 0, 0, 0, 0, 0, 0, 500, 500], [0, 1, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 1, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 1, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 1, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-           [0, 0, 0, 0, 0, 0, 0, 1, 0, 0], [500, 0, 0, 0, 0, 0, 0, 0, 1, 500], [500, 0, 0, 0, 0, 0, 0, 0, 500, 1]]
-    X_data = np.random.multivariate_normal(mean, cov, 2000)
+        self.subspaces = unique_subspaces
+        self.proba = proba/proba.sum()
 
-    model = VGAN(epochs=15, temperature=1, path_to_directory=Path() / "experiments" /
-                 f"Example_normal_{datetime.datetime.now()}_vgan", lr_G=0.01, lr_D=0.1)
-    model.fit(X_data)
+    def check_if_myopic(self,  x_data: np.array, bandwidth: Union[float, np.array] = 0.01, count=500) -> pd.DataFrame:
+        """Two sample test for myopicity
 
-    X_sample = torch.mps.Tensor(pd.DataFrame(
-        X_data).sample(500).to_numpy()).to('mps:0')
-    u = model.generate_subspaces(500)
-    uX_data = model.detector.encoder(
-        u * torch.mps.Tensor(X_sample).to(model.device) + torch.mean(X_sample, dim=0)*(~u))
-    X_sample = model.detector.encoder(X_sample)
-    mmd = tts.MMDStatistic(500, 500)
-    mmd_val, distances = mmd(X_sample, uX_data, alphas=[0.01], ret_matrix=True)
-    mmd_prop = tts.MMDStatistic(500, 500)
-    mmd_prop_val, distances_prop = mmd_prop(
-        X_sample, uX_data, alphas=[1/model.bandwidth], ret_matrix=True)
-    PYDEVD_WARN_EVALUATION_TIMEOUT = 200
-    print(
-        f'pval of the MMD two sample test {mmd.pval(distances)}, with MMD {mmd_val}')
-    print(
-        f'pval of the MMD two sample test with proposed bandwidth {1/model.bandwidth} is {mmd_prop.pval(distances_prop)}, with MMD {mmd_prop_val}')
-    unique_subspaces, proba = np.unique(
-        np.array(u.to('cpu')), axis=0, return_counts=True)
-    proba = proba/np.array(u.to('cpu')).shape[0]
-    unique_subspaces = [str(unique_subspaces[i]*1)
-                        for i in range(unique_subspaces.shape[0])]
+        Launches the two sample test presented in the paper for checking the myopicity.
 
-    print(pd.DataFrame({'subspace': unique_subspaces, 'probability': proba}))
-    print(np.sum(proba))
+        Args:
+            x_data (np.array): Data to check the myopicity of.
+            bandwidth (float | np.array, optional): Bandwidth used in the GOF tests using the MMD. This method always runs
+            the recommended bandwidth alongside this optional one. Defaults to 0.01.
+            count (int, optional): Number of samples used to approximate the MMD. Defaults to 500.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the p.value of the test with all the different bandwidths.
+        """
+        assert count <= x_data.shape[0], "Selected 'count' is greater than the number of samples in the dataset"
+        results = []
+
+        x_data = normalize(x_data, axis=0)
+        x_sample = torch.Tensor(pd.DataFrame(
+            x_data).sample(count).to_numpy()).to(self.device)
+        u_subspaces = self.generate_subspaces(count)
+        ux_sample = u_subspaces * \
+            torch.Tensor(x_sample).to(self.device) + \
+            torch.mean(x_sample, dim=0)*(~u_subspaces)
+        if type(bandwidth) == float:
+            bandwidth = [bandwidth]
+
+        if not hasattr(self, 'bandwidth'):
+            mmd_loss = MMDLossConstrained(0)
+            mmd_loss.forward(
+                x_sample, ux_sample, u_subspaces*1)
+            self.bandwidth = mmd_loss.bandwidth
+
+        bandwidth.sort()
+        for bw in bandwidth:
+            mmd = tts.MMDStatistic(count, count)
+            _, distances = mmd(x_sample, ux_sample, alphas=[
+                bw], ret_matrix=True)
+            results.append(mmd.pval(distances))
+
+        bw = self.bandwidth.item()
+        mmd = tts.MMDStatistic(count, count)
+        _, distances = mmd(x_sample, ux_sample, alphas=[
+            bw], ret_matrix=True)
+        results.append(mmd.pval(distances))
+
+        bandwidth.append("recommended bandwidth")
+        return pd.DataFrame([results], columns=bandwidth, index=["p-val"])
