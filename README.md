@@ -64,7 +64,7 @@ in any of our experimental branches.
 Is very easy to use V-GAN for your own data! An example can be found in the notebook `test.ipynb`. 
 
 # References 
-[1] Adversarial Subspace Generation for Knowledge Discovery in High-Dimensional Data
+[1] Cribeiro-Ramallo, J., Matteucci, F., Enciu, P., Jenke, A., Arzamasov, V., Strufe, T., & Böhm, K. (2025). Adversarial Subspace Generation for Outlier Detection in High-Dimensional Data. https://arxiv.org/abs/2504.07522
 
 [2] Léo Grinsztajn, Edouard Oyallon, and Gaël Varoquaux. 2022. Why do tree-based models still outperform deep learning on typical tabular data? In Proceedings of the 36th International Conference on Neural Information Processing Systems (NIPS '22). Curran Associates Inc., Red Hook, NY, USA, Article 37, 507–520.
 
